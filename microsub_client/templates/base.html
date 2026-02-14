@@ -39,6 +39,7 @@
               <svg class="lcars-user-chevron" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
             </button>
             <div class="lcars-user-dropdown">
+              {% if is_admin %}<a href="{% url 'broadcast-admin' %}" class="lcars-user-dropdown-item">Broadcasts</a>{% endif %}
               <a href="{% url 'settings' %}" class="lcars-user-dropdown-item">Settings</a>
               <a href="{% url 'logout' %}" class="lcars-user-dropdown-item">Log Out</a>
             </div>
@@ -51,6 +52,9 @@
       <main class="lcars-main" id="main-content">
         <div class="lcars-loading htmx-indicator" id="lcars-loading">
           <div class="lcars-scan-line"></div>
+        </div>
+        <div id="broadcast-container" hx-get="{% url 'broadcast-banner' %}" hx-trigger="every 30s" hx-swap="innerHTML">
+          {% include "partials/broadcast_banner.html" %}
         </div>
         {% block content %}{% endblock %}
       </main>

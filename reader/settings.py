@@ -52,6 +52,7 @@ TEMPLATES = [
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
+                "microsub_client.context_processors.broadcasts",
             ],
         },
     },
@@ -67,6 +68,12 @@ DATABASES = {
 }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+PADD_ADMIN_URLS = [
+    u.strip()
+    for u in os.environ.get("PADD_ADMIN_URLS", "").split(",")
+    if u.strip()
+]
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"

@@ -16,4 +16,9 @@ urlpatterns = [
     path("api/micropub/like/", views.micropub_like_view, name="micropub-like"),
     path("api/micropub/repost/", views.micropub_repost_view, name="micropub-repost"),
     path("api/micropub/reply/", views.micropub_reply_view, name="micropub-reply"),
+    path("admin/broadcasts/", views.broadcast_admin_view, name="broadcast-admin"),
+    path("admin/broadcasts/create/", views.broadcast_create_view, name="broadcast-create"),
+    path("admin/broadcasts/<int:broadcast_id>/toggle/", views.broadcast_toggle_view, name="broadcast-toggle"),
+    path("api/broadcast/<int:broadcast_id>/dismiss/", views.broadcast_dismiss_view, name="broadcast-dismiss"),
+    path("api/broadcasts/", views.broadcast_banner_view, name="broadcast-banner"),
 ]

@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: padd
+      POSTGRES_USER: padd
+      POSTGRES_PASSWORD: padd
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://padd:padd@db:5432/padd
+      DJANGO_ALLOWED_HOSTS: padd.dev
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://padd.dev
+    depends_on:
+      - db
+    command: >
+      sh -c "uv run manage.py migrate --noinput &&
+             uv run gunicorn reader.wsgi:application --bind 0.0.0.0:8000 --workers 2"
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

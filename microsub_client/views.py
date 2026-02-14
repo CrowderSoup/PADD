@@ -6,6 +6,8 @@ from django.templatetags.static import static
 
 from pathlib import Path
 
+from django.conf import settings
+
 from . import api, micropub
 from .auth import (
     build_authorization_url,
@@ -14,7 +16,7 @@ from .auth import (
     fetch_hcard,
     generate_pkce_pair,
 )
-from .models import CachedEntry, Interaction
+from .models import Broadcast, CachedEntry, Interaction
 from .utils import get_entry_type, sanitize_content, format_datetime
 
 
@@ -446,3 +448,64 @@ def micropub_reply_view(request):
         "entry_url": entry_url,
         "reply_content": content, "reply_url": result_url,
     })
+
+
+# --- Broadcast Views ---
+
+
+def _is_admin(request):
+    return request.session.get("user_url", "") in settings.PADD_ADMIN_URLS
+
+
+def broadcast_admin_view(request):
+    if not _is_admin(request):
+        return HttpResponse(status=403)
+
+    broadcasts = Broadcast.objects.all()
+    return render(request, "broadcast_admin.html", {"broadcasts": broadcasts})
+
+
+def broadcast_create_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+    if not _is_admin(request):
+        return HttpResponse(status=403)
+
+    message = request.POST.get("message", "").strip()
+    if message:
+        Broadcast.objects.create(message=message)
+
+    return redirect("broadcast-admin")
+
+
+def broadcast_toggle_view(request, broadcast_id):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+    if not _is_admin(request):
+        return HttpResponse(status=403)
+
+    try:
+        broadcast = Broadcast.objects.get(id=broadcast_id)
+    except Broadcast.DoesNotExist:
+        return HttpResponse(status=404)
+
+    broadcast.is_active = not broadcast.is_active
+    broadcast.save()
+    return redirect("broadcast-admin")
+
+
+def broadcast_dismiss_view(request, broadcast_id):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    dismissed = request.session.get("dismissed_broadcasts", [])
+    if broadcast_id not in dismissed:
+        dismissed.append(broadcast_id)
+        request.session["dismissed_broadcasts"] = dismissed
+
+    return HttpResponse("")
+
+
+def broadcast_banner_view(request):
+    """Returns the broadcast banner partial for HTMX polling."""
+    return render(request, "partials/broadcast_banner.html")
