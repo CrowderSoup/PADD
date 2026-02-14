@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Broadcasts — PADD{% endblock %}
+
+{% block content %}
+<div class="lcars-settings">
+  <div class="lcars-timeline-header">
+    <h1 class="lcars-channel-title">Broadcasts</h1>
+  </div>
+
+  <div class="lcars-settings-section">
+    <div class="lcars-settings-label">New Broadcast</div>
+    <form method="post" action="{% url 'broadcast-create' %}">
+      {% csrf_token %}
+      <div class="lcars-form-group">
+        <textarea name="message" class="lcars-input" rows="3" placeholder="Enter broadcast message…" required></textarea>
+      </div>
+      <button type="submit" class="lcars-button lcars-button-orange">Send Broadcast</button>
+    </form>
+  </div>
+
+  <div class="lcars-settings-section">
+    <div class="lcars-settings-label">All Broadcasts</div>
+    {% if broadcasts %}
+      {% for broadcast in broadcasts %}
+        <div class="lcars-broadcast-admin-item">
+          <div class="lcars-broadcast-admin-info">
+            <span class="lcars-broadcast-admin-status {% if broadcast.is_active %}lcars-broadcast-active{% else %}lcars-broadcast-inactive{% endif %}">
+              {{ broadcast.is_active|yesno:"Active,Inactive" }}
+            </span>
+            <span class="lcars-broadcast-admin-date">{{ broadcast.created_at|date:"M j, Y H:i" }}</span>
+          </div>
+          <p class="lcars-broadcast-admin-message">{{ broadcast.message }}</p>
+          <form method="post" action="{% url 'broadcast-toggle' broadcast.id %}" class="lcars-broadcast-admin-actions">
+            {% csrf_token %}
+            <button type="submit" class="lcars-interaction-btn">
+              {{ broadcast.is_active|yesno:"Deactivate,Activate" }}
+            </button>
+          </form>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="lcars-empty">No broadcasts yet</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

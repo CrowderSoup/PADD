@@ -1,0 +1,13 @@
+{% for broadcast in active_broadcasts %}
+<div class="lcars-broadcast" id="broadcast-{{ broadcast.id }}">
+  <div class="lcars-broadcast-accent"></div>
+  <div class="lcars-broadcast-body">
+    <p class="lcars-broadcast-message">{{ broadcast.message }}</p>
+    <button class="lcars-broadcast-dismiss"
+            hx-post="{% url 'broadcast-dismiss' broadcast.id %}"
+            hx-target="#broadcast-{{ broadcast.id }}"
+            hx-swap="outerHTML"
+            aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+{% endfor %}
