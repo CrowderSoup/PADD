@@ -1,0 +1,18 @@
+{% for channel in channels %}
+<a href="{% url 'timeline' channel_uid=channel.uid %}"
+   class="lcars-channel-item {% if channel.uid == channel_uid %}lcars-channel-active{% endif %}"
+   hx-get="{% url 'timeline' channel_uid=channel.uid %}"
+   hx-target="#main-content"
+   hx-swap="innerHTML"
+   hx-push-url="true"
+   hx-indicator="#lcars-loading">
+  <span class="lcars-channel-name">{{ channel.name }}</span>
+  {% if channel.unread and channel.unread != True %}
+    <span class="lcars-badge">{{ channel.unread }}</span>
+  {% elif channel.unread %}
+    <span class="lcars-badge">Unread</span>
+  {% endif %}
+</a>
+{% empty %}
+<div class="lcars-empty">No channels found</div>
+{% endfor %}

@@ -1,0 +1,95 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PADD{% endblock %}</title>
+  <link rel="icon" href="{% static 'logo.svg' %}">
+  <link rel="manifest" href="{% static 'manifest.json' %}">
+  <meta name="theme-color" content="#f1c86e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PADD">
+  <link rel="apple-touch-icon" href="{% static 'logo.svg' %}">
+  <link rel="stylesheet" href="{% static 'css/lcars.css' %}">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <div class="lcars-app">
+    <header class="lcars-header">
+      <button class="lcars-header-bracket" onclick="var s=document.getElementById('channel-sidebar');if(s)s.classList.toggle('lcars-sidebar-open')" aria-label="Toggle menu">
+        <span class="lcars-menu-bars"><span></span><span></span><span></span></span>
+      </button>
+      <div class="lcars-header-bar">
+        <a href="{% url 'index' %}" class="lcars-header-title">
+          <img src="{% static 'wordmark.svg' %}"/>
+        </a>
+        {% if request.session.user_url %}
+          <div class="lcars-user-menu">
+            <button class="lcars-user-trigger" onclick="this.parentElement.classList.toggle('lcars-user-menu-open')">
+              {% if request.session.user_photo %}
+                <img src="{{ request.session.user_photo }}" alt="" class="lcars-user-avatar">
+              {% else %}
+                <svg class="lcars-user-avatar lcars-user-avatar-default" viewBox="0 0 32 32" fill="none">
+                  <circle cx="16" cy="12" r="6" fill="currentColor"/>
+                  <path d="M4 28c0-6.627 5.373-12 12-12s12 5.373 12 12" fill="currentColor"/>
+                </svg>
+              {% endif %}
+              <span class="lcars-user-name">{{ request.session.user_name|default:request.session.user_url }}</span>
+              <svg class="lcars-user-chevron" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+            </button>
+            <div class="lcars-user-dropdown">
+              <a href="{% url 'settings' %}" class="lcars-user-dropdown-item">Settings</a>
+              <a href="{% url 'logout' %}" class="lcars-user-dropdown-item">Log Out</a>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </header>
+    <div class="lcars-body">
+      {% block sidebar %}{% endblock %}
+      <main class="lcars-main" id="main-content">
+        <div class="lcars-loading htmx-indicator" id="lcars-loading">
+          <div class="lcars-scan-line"></div>
+        </div>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+    <footer class="lcars-footer">
+      <div class="lcars-footer-bracket">Personal Aggregation Display Dashboard</div>
+      <div class="lcars-footer-bar"></div>
+    </footer>
+  </div>
+<script>
+function initCollapsibles(root) {
+  root.querySelectorAll('.lcars-entry-collapsible:not([data-init])').forEach(el => {
+    el.dataset.init = '1';
+    const inner = el.querySelector('.lcars-entry-collapse-inner');
+    const btn = el.querySelector('.lcars-expand-btn');
+    if (inner.scrollHeight <= 200) {
+      el.classList.add('lcars-expanded');
+      btn.style.display = 'none';
+    }
+  });
+}
+initCollapsibles(document);
+document.body.addEventListener('htmx:afterSwap', e => {
+  initCollapsibles(e.target);
+  // Close mobile sidebar after channel switch
+  const sidebar = document.getElementById('channel-sidebar');
+  if (sidebar) sidebar.classList.remove('lcars-sidebar-open');
+});
+
+// Close user dropdown on click outside
+document.addEventListener('click', e => {
+  document.querySelectorAll('.lcars-user-menu-open').forEach(menu => {
+    if (!menu.contains(e.target)) menu.classList.remove('lcars-user-menu-open');
+  });
+});
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

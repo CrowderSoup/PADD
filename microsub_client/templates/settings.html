@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Channels</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list" id="channel-nav">
+    {% include "partials/channel_list.html" %}
+  </nav>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-settings">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">Settings</h2>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="lcars-settings-section">
+      <div class="lcars-settings-label">Default Filter</div>
+      <div class="lcars-filter-toggle">
+        <label class="lcars-filter-btn {% if default_filter != 'unread' %}lcars-filter-active{% endif %}">
+          <input type="radio" name="default_filter" value="all"
+                 {% if default_filter != "unread" %}checked{% endif %}
+                 class="lcars-sr-radio"
+                 onchange="this.form.submit()">
+          All
+        </label>
+        <label class="lcars-filter-btn {% if default_filter == 'unread' %}lcars-filter-active{% endif %}">
+          <input type="radio" name="default_filter" value="unread"
+                 {% if default_filter == "unread" %}checked{% endif %}
+                 class="lcars-sr-radio"
+                 onchange="this.form.submit()">
+          Unread
+        </label>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

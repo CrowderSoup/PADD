@@ -1,0 +1,94 @@
+<article class="lcars-entry lcars-entry-{{ entry.display_type }}">
+  <div class="lcars-entry-indicator"></div>
+  <div class="lcars-entry-content">
+    <div class="lcars-entry-header">
+      {% if entry.author %}
+        <div class="lcars-author">
+          {% if entry.author.photo %}
+            <img src="{{ entry.author.photo }}" alt="" class="lcars-author-photo">
+          {% endif %}
+          <span class="lcars-author-name">
+            {% if entry.author.name %}{{ entry.author.name }}{% elif entry.author.url %}{{ entry.author.url }}{% endif %}
+          </span>
+        </div>
+      {% endif %}
+      <div class="lcars-entry-meta">
+        {% if entry.formatted_date %}
+          <time class="lcars-entry-date">{{ entry.formatted_date }}</time>
+        {% endif %}
+        {% if entry.is_read %}
+          <span class="lcars-read-status lcars-read">Read</span>
+        {% else %}
+          <div class="lcars-entry-read-action"
+               hx-post="{% url 'mark-read' %}"
+               hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
+               hx-swap="innerHTML"
+               hx-target="this">
+            <span class="lcars-read-status lcars-unread">Mark Read</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if entry.name %}
+      <h3 class="lcars-entry-title">
+        {% if entry.url %}<a href="{{ entry.url }}" target="_blank" rel="noopener">{{ entry.name }}</a>{% else %}{{ entry.name }}{% endif %}
+      </h3>
+    {% endif %}
+
+    {% if entry.display_type == "like" %}
+      <p class="lcars-entry-action">Liked <a href="{{ entry.like_of }}" target="_blank" rel="noopener">{{ entry.like_of }}</a></p>
+    {% elif entry.display_type == "repost" %}
+      <p class="lcars-entry-action">Reposted <a href="{{ entry.repost_of }}" target="_blank" rel="noopener">{{ entry.repost_of }}</a></p>
+    {% elif entry.display_type == "reply" %}
+      <p class="lcars-entry-action">In reply to <a href="{{ entry.in_reply_to }}" target="_blank" rel="noopener">{{ entry.in_reply_to }}</a></p>
+    {% elif entry.display_type == "bookmark" %}
+      <p class="lcars-entry-action">Bookmarked <a href="{{ entry.bookmark_of }}" target="_blank" rel="noopener">{{ entry.bookmark_of }}</a></p>
+    {% endif %}
+
+    {% if entry.safe_content or entry.photo %}
+      <div class="lcars-entry-collapsible">
+        <div class="lcars-entry-collapse-inner">
+          {% if entry.safe_content %}
+            <div class="lcars-entry-body">{{ entry.safe_content }}</div>
+          {% endif %}
+          {% if entry.photo %}
+            <div class="lcars-entry-photos">
+              {% for photo in entry.photo %}
+                <img src="{{ photo }}" alt="" class="lcars-entry-photo" loading="lazy">
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+        <button class="lcars-expand-btn" onclick="this.parentElement.classList.toggle('lcars-expanded'); this.textContent = this.parentElement.classList.contains('lcars-expanded') ? 'Collapse' : 'Expand';" type="button">Expand</button>
+      </div>
+    {% endif %}
+
+    {% if entry.url and not entry.name %}
+      <a href="{{ entry.url }}" class="lcars-entry-permalink" target="_blank" rel="noopener">{{ entry.url }}</a>
+    {% endif %}
+
+    {% if has_micropub and entry.url %}
+    <div class="lcars-interactions">
+      {% include "partials/interaction_buttons.html" with kind="like" active=entry.user_liked entry_url=entry.url result_url=entry.like_result_url %}
+      {% include "partials/interaction_buttons.html" with kind="repost" active=entry.user_reposted entry_url=entry.url result_url=entry.repost_result_url %}
+      <div class="lcars-reply-wrapper">
+        {% include "partials/interaction_buttons.html" with kind="reply" active=entry.user_replied entry_url=entry.url reply_url=entry.reply_url %}
+      </div>
+    </div>
+    {% if entry.user_replied and entry.reply_content %}
+      <div class="lcars-reply-sent">
+        <p class="lcars-reply-sent-text">{{ entry.reply_content }}</p>
+        {% if entry.reply_url %}
+          <a href="{{ entry.reply_url }}" class="lcars-reply-sent-link" target="_blank" rel="noopener">View on your site</a>
+        {% else %}
+          <span class="lcars-reply-sent-nolink">Sent (no URL returned by server)</span>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if not entry.user_replied %}
+      {% include "partials/reply_form.html" with entry_url=entry.url %}
+    {% endif %}
+    {% endif %}
+  </div>
+</article>

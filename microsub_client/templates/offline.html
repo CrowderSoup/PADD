@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline — PADD</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #070a12;
+      color: #ece9e4;
+      font-family: "Avenir Next", "Sora", "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .offline-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+      text-align: center;
+      background:
+        radial-gradient(circle at 12% 6%, rgba(138,138,237,0.12), transparent 36%),
+        radial-gradient(circle at 86% 94%, rgba(248,154,37,0.1), transparent 34%),
+        linear-gradient(160deg, #070a12 0%, #0b111f 52%, #0f1728 100%);
+    }
+    .offline-badge {
+      display: inline-block;
+      background: #d46464;
+      color: #0a0a10;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 0.35em 1.2em;
+      border-radius: 14px;
+      margin-bottom: 1.5rem;
+    }
+    .offline-title {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f1c86e;
+      margin-bottom: 0.75rem;
+    }
+    .offline-message {
+      font-size: 1.1rem;
+      color: rgba(236,233,228,0.62);
+      max-width: 28em;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+    }
+    .offline-retry {
+      display: inline-block;
+      background: #f89a25;
+      color: #0a0a10;
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.65em 1.8em;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .offline-retry:hover { opacity: 0.85; }
+    .offline-bar {
+      width: 120px;
+      height: 6px;
+      background: #f89a25;
+      border-radius: 3px;
+      margin-top: 3rem;
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="offline-badge">Signal Lost</div>
+    <h1 class="offline-title">Communications Offline</h1>
+    <p class="offline-message">
+      Unable to establish a subspace link. Check your network connection and try again.
+    </p>
+    <a href="/" class="offline-retry" onclick="window.location.reload();return false;">Retry Connection</a>
+    <div class="offline-bar"></div>
+  </div>
+</body>
+</html>
