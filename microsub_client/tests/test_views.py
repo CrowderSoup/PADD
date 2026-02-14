@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 
 from microsub_client import api, micropub
-from microsub_client.models import Broadcast, Interaction
+from microsub_client.models import Broadcast, Interaction, KnownUser
 
 from .conftest import SIMPLE_STORAGES, auth_session
 
@@ -123,6 +123,41 @@ class CallbackViewTests(TestCase):
         self.assertEqual(session["user_name"], "Jane")
         self.assertNotIn("auth_state", session)
         self.assertNotIn("code_verifier", session)
+
+    @patch("microsub_client.views.fetch_hcard", return_value={"name": "Jane", "photo": "https://me.example/photo.jpg"})
+    @patch("microsub_client.views.exchange_code_for_token", return_value={
+        "access_token": "tok123", "me": "https://me.example/",
+    })
+    def test_callback_creates_known_user(self, _mock_exchange, _mock_hcard):
+        session = self.client.session
+        session["auth_state"] = "test-state"
+        session["token_endpoint"] = "https://auth.example/token"
+        session["code_verifier"] = "verifier"
+        session["user_url"] = "https://me.example/"
+        session["microsub_endpoint"] = "https://microsub.example/"
+        session.save()
+        self.client.get("/login/callback/", {"code": "abc", "state": "test-state"})
+        user = KnownUser.objects.get(url="https://me.example/")
+        self.assertEqual(user.name, "Jane")
+        self.assertEqual(user.photo, "https://me.example/photo.jpg")
+
+    @patch("microsub_client.views.fetch_hcard", return_value={"name": "Jane Updated", "photo": ""})
+    @patch("microsub_client.views.exchange_code_for_token", return_value={
+        "access_token": "tok123", "me": "https://me.example/",
+    })
+    def test_callback_updates_existing_known_user(self, _mock_exchange, _mock_hcard):
+        KnownUser.objects.create(url="https://me.example/", name="Jane", photo="https://me.example/old.jpg")
+        session = self.client.session
+        session["auth_state"] = "test-state"
+        session["token_endpoint"] = "https://auth.example/token"
+        session["code_verifier"] = "verifier"
+        session["user_url"] = "https://me.example/"
+        session["microsub_endpoint"] = "https://microsub.example/"
+        session.save()
+        self.client.get("/login/callback/", {"code": "abc", "state": "test-state"})
+        user = KnownUser.objects.get(url="https://me.example/")
+        self.assertEqual(user.name, "Jane Updated")
+        self.assertEqual(KnownUser.objects.count(), 1)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -254,14 +289,14 @@ class BroadcastViewTests(TestCase):
         session = self.client.session
         session.update(auth_session())
         session.save()
-        response = self.client.get("/admin/broadcasts/")
+        response = self.client.get("/admin/")
         self.assertEqual(response.status_code, 403)
 
     def test_admin_view_accessible_by_admin(self):
         session = self.client.session
         session.update(self._admin_session())
         session.save()
-        response = self.client.get("/admin/broadcasts/")
+        response = self.client.get("/admin/")
         self.assertEqual(response.status_code, 200)
 
     def test_create_requires_admin(self):
@@ -310,6 +345,63 @@ class BroadcastViewTests(TestCase):
         session.save()
         response = self.client.get("/api/broadcast/1/dismiss/")
         self.assertEqual(response.status_code, 405)
+
+
+@override_settings(PADD_ADMIN_URLS=["https://admin.example/"], STORAGES=SIMPLE_STORAGES)
+class AdminUserListTests(TestCase):
+    def _admin_session(self):
+        s = auth_session()
+        s["user_url"] = "https://admin.example/"
+        return s
+
+    def test_admin_view_shows_users(self):
+        KnownUser.objects.create(url="https://alice.example/", name="Alice")
+        KnownUser.objects.create(url="https://bob.example/", name="Bob")
+        session = self.client.session
+        session.update(self._admin_session())
+        session.save()
+        response = self.client.get("/admin/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alice")
+        self.assertContains(response, "Bob")
+
+    def test_search_filters_users(self):
+        KnownUser.objects.create(url="https://alice.example/", name="Alice")
+        KnownUser.objects.create(url="https://bob.example/", name="Bob")
+        session = self.client.session
+        session.update(self._admin_session())
+        session.save()
+        response = self.client.get("/admin/?q=alice")
+        self.assertContains(response, "Alice")
+        self.assertNotContains(response, "Bob")
+
+    def test_search_by_url(self):
+        KnownUser.objects.create(url="https://alice.example/", name="Alice")
+        KnownUser.objects.create(url="https://bob.example/", name="Bob")
+        session = self.client.session
+        session.update(self._admin_session())
+        session.save()
+        response = self.client.get("/admin/?q=bob.example")
+        self.assertNotContains(response, "Alice")
+        self.assertContains(response, "Bob")
+
+    def test_pagination(self):
+        for i in range(30):
+            KnownUser.objects.create(url=f"https://user{i}.example/", name=f"User {i}")
+        session = self.client.session
+        session.update(self._admin_session())
+        session.save()
+        response = self.client.get("/admin/")
+        self.assertContains(response, "Page 1 of 2")
+        response = self.client.get("/admin/?page=2")
+        self.assertContains(response, "Page 2 of 2")
+
+    def test_non_admin_gets_403(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/admin/")
+        self.assertEqual(response.status_code, 403)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)

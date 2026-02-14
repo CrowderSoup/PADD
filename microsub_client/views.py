@@ -16,7 +16,10 @@ from .auth import (
     fetch_hcard,
     generate_pkce_pair,
 )
-from .models import Broadcast, CachedEntry, Interaction
+from django.core.paginator import Paginator
+from django.db.models import Q
+
+from .models import Broadcast, CachedEntry, Interaction, KnownUser
 from .utils import get_entry_type, sanitize_content, format_datetime
 
 
@@ -140,6 +143,14 @@ def callback_view(request):
             request.session["user_name"] = hcard["name"]
         if hcard.get("photo"):
             request.session["user_photo"] = hcard["photo"]
+
+        KnownUser.objects.update_or_create(
+            url=user_url,
+            defaults={
+                "name": hcard.get("name") or "",
+                "photo": hcard.get("photo") or "",
+            },
+        )
 
     return redirect("index")
 
@@ -457,12 +468,26 @@ def _is_admin(request):
     return request.session.get("user_url", "") in settings.PADD_ADMIN_URLS
 
 
-def broadcast_admin_view(request):
+def admin_view(request):
     if not _is_admin(request):
         return HttpResponse(status=403)
 
     broadcasts = Broadcast.objects.all()
-    return render(request, "broadcast_admin.html", {"broadcasts": broadcasts})
+
+    users = KnownUser.objects.all()
+    q = request.GET.get("q", "").strip()
+    if q:
+        users = users.filter(Q(name__icontains=q) | Q(url__icontains=q))
+
+    paginator = Paginator(users, 25)
+    page_number = request.GET.get("page")
+    users_page = paginator.get_page(page_number)
+
+    return render(request, "admin.html", {
+        "broadcasts": broadcasts,
+        "users_page": users_page,
+        "q": q,
+    })
 
 
 def broadcast_create_view(request):
@@ -475,7 +500,7 @@ def broadcast_create_view(request):
     if message:
         Broadcast.objects.create(message=message)
 
-    return redirect("broadcast-admin")
+    return redirect("admin")
 
 
 def broadcast_toggle_view(request, broadcast_id):
@@ -491,7 +516,7 @@ def broadcast_toggle_view(request, broadcast_id):
 
     broadcast.is_active = not broadcast.is_active
     broadcast.save()
-    return redirect("broadcast-admin")
+    return redirect("admin")
 
 
 def broadcast_dismiss_view(request, broadcast_id):

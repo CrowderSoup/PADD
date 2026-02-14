@@ -34,6 +34,20 @@ class Interaction(models.Model):
         return f"{self.kind} of {self.entry.url} by {self.user_url}"
 
 
+class KnownUser(models.Model):
+    url = models.URLField(max_length=2048, unique=True)
+    name = models.CharField(max_length=255, blank=True, default="")
+    photo = models.URLField(max_length=2048, blank=True, default="")
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_login = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_login"]
+
+    def __str__(self):
+        return self.name or self.url
+
+
 class Broadcast(models.Model):
     message = models.TextField()
     is_active = models.BooleanField(default=True)

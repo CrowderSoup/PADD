@@ -39,7 +39,7 @@
               <svg class="lcars-user-chevron" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
             </button>
             <div class="lcars-user-dropdown">
-              {% if is_admin %}<a href="{% url 'broadcast-admin' %}" class="lcars-user-dropdown-item">Broadcasts</a>{% endif %}
+              {% if is_admin %}<a href="{% url 'admin' %}" class="lcars-user-dropdown-item">Admin</a>{% endif %}
               <a href="{% url 'settings' %}" class="lcars-user-dropdown-item">Settings</a>
               <a href="{% url 'logout' %}" class="lcars-user-dropdown-item">Log Out</a>
             </div>
