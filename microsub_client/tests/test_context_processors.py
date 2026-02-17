@@ -1,7 +1,7 @@
 from django.test import RequestFactory, TestCase, override_settings
 
 from microsub_client.context_processors import broadcasts
-from microsub_client.models import Broadcast
+from microsub_client.models import Broadcast, DismissedBroadcast
 
 
 @override_settings(PADD_ADMIN_URLS=["https://admin.example/"])
@@ -47,10 +47,12 @@ class BroadcastContextProcessorTests(TestCase):
 
     def test_dismissed_broadcasts_excluded(self):
         b = Broadcast.objects.create(message="Dismiss me", is_active=True)
+        DismissedBroadcast.objects.create(
+            user_url="https://other.example/", broadcast=b
+        )
         request = self._make_request(session={
             "access_token": "tok",
             "user_url": "https://other.example/",
-            "dismissed_broadcasts": [b.id],
         })
         result = broadcasts(request)
         self.assertEqual(list(result["active_broadcasts"]), [])

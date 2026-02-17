@@ -2,6 +2,7 @@
       hx-post="{% url 'micropub-reply' %}"
       hx-vals='{"entry_url": "{{ entry_url }}"}'
       hx-swap="none"
+      hx-on::before-request="if(this._easymde){this.querySelector('textarea[name=content]').value=this._easymde.value()}"
       hx-on::after-request="if(event.detail.successful){var c=this.closest('.lcars-entry-content'),t=document.createElement('div');t.innerHTML=event.detail.xhr.responseText;var btn=t.querySelector('[data-reply-button]'),sent=t.querySelector('[data-reply-sent]');c.querySelector('.lcars-reply-wrapper').innerHTML=btn.innerHTML;c.querySelector('.lcars-interactions').insertAdjacentHTML('afterend',sent.innerHTML);this.remove();}">
   <textarea name="content" class="lcars-reply-input"
             placeholder="Write a reply..." rows="3" required></textarea>

@@ -19,7 +19,7 @@ from .auth import (
 from django.core.paginator import Paginator
 from django.db.models import Q
 
-from .models import Broadcast, CachedEntry, Interaction, KnownUser
+from .models import Broadcast, CachedEntry, DismissedBroadcast, Interaction, KnownUser, UserSettings
 from .utils import get_entry_type, sanitize_content, format_datetime
 
 
@@ -164,9 +164,21 @@ def settings_view(request):
     if not request.session.get("access_token"):
         return redirect("login")
 
+    user_settings = _get_user_settings(request)
+
     if request.method == "POST":
-        default_filter = request.POST.get("default_filter", "all")
-        request.session["default_filter"] = default_filter
+        user_settings.default_filter = request.POST.get("default_filter", "all")
+        user_settings.mark_read_behavior = request.POST.get(
+            "mark_read_behavior", UserSettings.MarkReadBehavior.EXPLICIT
+        )
+        user_settings.expand_content = request.POST.get("expand_content") == "on"
+        user_settings.save()
+        if request.htmx:
+            return render(request, "partials/settings_form.html", {
+                "default_filter": user_settings.default_filter,
+                "mark_read_behavior": user_settings.mark_read_behavior,
+                "expand_content": user_settings.expand_content,
+            })
         return redirect("settings")
 
     endpoint = request.session["microsub_endpoint"]
@@ -177,9 +189,18 @@ def settings_view(request):
         channels = []
 
     return render(request, "settings.html", {
-        "default_filter": request.session.get("default_filter", "all"),
+        "default_filter": user_settings.default_filter,
+        "mark_read_behavior": user_settings.mark_read_behavior,
+        "expand_content": user_settings.expand_content,
         "channels": channels,
     })
+
+
+def _get_user_settings(request):
+    settings_obj, _ = UserSettings.objects.get_or_create(
+        user_url=request.session["user_url"]
+    )
+    return settings_obj
 
 
 # --- Main Views ---
@@ -263,11 +284,13 @@ def timeline_view(request, channel_uid):
     endpoint = request.session["microsub_endpoint"]
     token = request.session["access_token"]
 
+    user_settings = _get_user_settings(request)
+
     after = request.GET.get("after")
     if "unread" in request.GET:
         unread_only = request.GET["unread"] == "1"
     else:
-        unread_only = request.session.get("default_filter") == "unread"
+        unread_only = user_settings.default_filter == "unread"
 
     try:
         channels = api.get_channels(endpoint, token)
@@ -297,6 +320,8 @@ def timeline_view(request, channel_uid):
         "after_cursor": after_cursor,
         "unread_only": unread_only,
         "has_micropub": has_micropub,
+        "expand_content": user_settings.expand_content,
+        "mark_read_behavior": user_settings.mark_read_behavior,
     }
 
     # HTMX partial for "load more"
@@ -336,10 +361,15 @@ def mark_read_view(request):
     except api.MicrosubError:
         return HttpResponse(status=502)
 
-    return HttpResponse(
-        '<span class="lcars-read-status lcars-read">Read</span>',
-        status=200,
-    )
+    try:
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        channels = []
+
+    return render(request, "partials/mark_read_response.html", {
+        "channels": channels,
+        "channel_uid": channel,
+    })
 
 
 # --- Micropub Views ---
@@ -348,6 +378,93 @@ def mark_read_view(request):
 def _get_or_create_cached_entry(url):
     entry, _ = CachedEntry.objects.get_or_create(url=url)
     return entry
+
+
+def new_post_view(request):
+    mp_endpoint = request.session.get("micropub_endpoint")
+    if not mp_endpoint:
+        return HttpResponse("Micropub not available", status=400)
+
+    token = request.session["access_token"]
+
+    has_media_endpoint = False
+    syndicate_to = []
+    try:
+        config = micropub.query_config(mp_endpoint, token)
+        has_media_endpoint = bool(config.get("media-endpoint"))
+        syndicate_to = config.get("syndicate-to", [])
+    except micropub.MicropubError:
+        pass
+
+    if request.method == "POST":
+        content = request.POST.get("content", "").strip()
+        if not content:
+            return render(request, "new_post.html", {
+                "error": "Content is required.",
+                "has_media_endpoint": has_media_endpoint,
+                "syndicate_to": syndicate_to,
+                "hide_fab": True,
+            })
+
+        name = request.POST.get("name", "").strip() or None
+        tags = request.POST.get("tags", "").strip()
+        category = [t.strip() for t in tags.split(",") if t.strip()] or None
+        photos = request.POST.getlist("photo")
+        photo = [p for p in photos if p] or None
+        location = request.POST.get("location", "").strip() or None
+
+        try:
+            result_url = micropub.create_post(
+                mp_endpoint, token, content,
+                name=name, category=category, photo=photo, location=location,
+            )
+        except micropub.MicropubError as exc:
+            return render(request, "new_post.html", {
+                "error": f"Failed to publish: {exc}",
+                "has_media_endpoint": has_media_endpoint,
+                "syndicate_to": syndicate_to,
+                "hide_fab": True,
+            })
+
+        return render(request, "new_post.html", {
+            "success": True,
+            "result_url": result_url,
+            "has_media_endpoint": has_media_endpoint,
+            "syndicate_to": syndicate_to,
+            "hide_fab": True,
+        })
+
+    return render(request, "new_post.html", {
+        "has_media_endpoint": has_media_endpoint,
+        "syndicate_to": syndicate_to,
+        "hide_fab": True,
+    })
+
+
+def upload_media_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    mp_endpoint = request.session.get("micropub_endpoint")
+    if not mp_endpoint:
+        return JsonResponse({"error": "Micropub not available"}, status=400)
+
+    token = request.session["access_token"]
+
+    uploaded_file = request.FILES.get("file")
+    if not uploaded_file:
+        return JsonResponse({"error": "No file provided"}, status=400)
+
+    try:
+        config = micropub.query_config(mp_endpoint, token)
+        media_endpoint = config.get("media-endpoint")
+        if not media_endpoint:
+            return JsonResponse({"error": "No media endpoint available"}, status=400)
+        url = micropub.upload_media(media_endpoint, token, uploaded_file)
+    except micropub.MicropubError as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+    return JsonResponse({"url": url})
 
 
 def micropub_like_view(request):
@@ -523,10 +640,11 @@ def broadcast_dismiss_view(request, broadcast_id):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    dismissed = request.session.get("dismissed_broadcasts", [])
-    if broadcast_id not in dismissed:
-        dismissed.append(broadcast_id)
-        request.session["dismissed_broadcasts"] = dismissed
+    user_url = request.session.get("user_url", "")
+    if user_url:
+        DismissedBroadcast.objects.get_or_create(
+            user_url=user_url, broadcast_id=broadcast_id
+        )
 
     return HttpResponse("")
 

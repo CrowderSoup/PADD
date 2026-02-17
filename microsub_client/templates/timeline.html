@@ -12,11 +12,18 @@
     {% include "partials/channel_list.html" %}
   </nav>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+  {% if has_micropub %}
+  <div class="lcars-sidebar-new-post">
+    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
+      <i class="fas fa-pen"></i> New Post
+    </a>
+  </div>
+  {% endif %}
 </aside>
 {% endblock %}
 
 {% block content %}
-<div id="timeline" class="lcars-timeline">
+<div id="timeline" class="lcars-timeline" data-mark-read-behavior="{{ mark_read_behavior|default:'explicit' }}">
   <div class="lcars-timeline-header" id="timeline-header">
     <h2 class="lcars-channel-title" id="channel-title">
       {% if current_channel %}{{ current_channel.name }}{% endif %}

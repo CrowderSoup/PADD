@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 
 from microsub_client import api, micropub
-from microsub_client.models import Broadcast, Interaction, KnownUser
+from microsub_client.models import Broadcast, DismissedBroadcast, Interaction, KnownUser, UserSettings
 
 from .conftest import SIMPLE_STORAGES, auth_session
 
@@ -336,8 +336,25 @@ class BroadcastViewTests(TestCase):
         session.save()
         response = self.client.post(f"/api/broadcast/{b.id}/dismiss/")
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            DismissedBroadcast.objects.filter(
+                user_url="https://me.example/", broadcast=b
+            ).exists()
+        )
+
+    def test_dismiss_broadcast_idempotent(self):
+        b = Broadcast.objects.create(message="Dismiss me twice")
         session = self.client.session
-        self.assertIn(b.id, session["dismissed_broadcasts"])
+        session.update(auth_session())
+        session.save()
+        self.client.post(f"/api/broadcast/{b.id}/dismiss/")
+        self.client.post(f"/api/broadcast/{b.id}/dismiss/")
+        self.assertEqual(
+            DismissedBroadcast.objects.filter(
+                user_url="https://me.example/", broadcast=b
+            ).count(),
+            1,
+        )
 
     def test_dismiss_get_returns_405(self):
         session = self.client.session
@@ -456,6 +473,31 @@ class TimelineViewTests(TestCase):
         response = self.client.get("/channel/home/")
         self.assertRedirects(response, "/login/", fetch_redirect_response=False)
 
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_context_contains_mark_read_behavior_default(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/")
+        self.assertEqual(response.context["mark_read_behavior"], "explicit")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_context_contains_mark_read_behavior_custom(self, _mock_ch, _mock_tl):
+        UserSettings.objects.create(
+            user_url="https://me.example/", mark_read_behavior="scroll_past"
+        )
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/")
+        self.assertEqual(response.context["mark_read_behavior"], "scroll_past")
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):
@@ -473,5 +515,41 @@ class SettingsViewTests(TestCase):
         session.update(auth_session())
         session.save()
         self.client.post("/settings/", {"default_filter": "unread"})
+        us = UserSettings.objects.get(user_url="https://me.example/")
+        self.assertEqual(us.default_filter, "unread")
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    def test_post_saves_mark_read_behavior(self, _mock):
         session = self.client.session
-        self.assertEqual(session["default_filter"], "unread")
+        session.update(auth_session())
+        session.save()
+        self.client.post("/settings/", {
+            "default_filter": "all",
+            "mark_read_behavior": "scroll_past",
+        })
+        us = UserSettings.objects.get(user_url="https://me.example/")
+        self.assertEqual(us.mark_read_behavior, "scroll_past")
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    def test_post_saves_expand_content(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.post("/settings/", {
+            "default_filter": "all",
+            "expand_content": "on",
+        })
+        us = UserSettings.objects.get(user_url="https://me.example/")
+        self.assertTrue(us.expand_content)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    def test_post_expand_content_off_when_unchecked(self, _mock):
+        UserSettings.objects.create(
+            user_url="https://me.example/", expand_content=True
+        )
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.post("/settings/", {"default_filter": "all"})
+        us = UserSettings.objects.get(user_url="https://me.example/")
+        self.assertFalse(us.expand_content)
