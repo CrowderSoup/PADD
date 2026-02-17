@@ -1,6 +1,10 @@
+import logging
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
+
+_quiet_request = logging.getLogger("django.request")
+_quiet_request.setLevel(logging.CRITICAL)
 
 from microsub_client import api, micropub
 from microsub_client.models import Broadcast, DismissedBroadcast, Interaction, KnownUser, UserSettings
@@ -257,12 +261,65 @@ class MicropubLikeViewTests(TestCase):
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class MicropubReplyViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/micropub/reply/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_missing_entry_url_returns_400(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/micropub/reply/", {"content": "Hello"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content, b"Entry URL is required")
+
     def test_missing_content_returns_400(self):
         session = self.client.session
         session.update(auth_session())
         session.save()
         response = self.client.post("/api/micropub/reply/", {"entry_url": "https://example.com"})
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content, b"Content is required")
+
+    def test_whitespace_only_content_returns_400(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/micropub/reply/", {
+            "entry_url": "https://example.com",
+            "content": "   ",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content, b"Content is required")
+
+    def test_missing_micropub_endpoint_returns_400(self):
+        session = self.client.session
+        session.update({
+            "access_token": "tok",
+            "user_url": "https://me.example/",
+        })
+        session.save()
+        response = self.client.post("/api/micropub/reply/", {
+            "entry_url": "https://example.com",
+            "content": "Hello",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content, b"Micropub not available")
+
+    @patch("microsub_client.views.micropub.reply", side_effect=micropub.MicropubError("upstream fail"))
+    def test_micropub_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/micropub/reply/", {
+            "entry_url": "https://example.com/post",
+            "content": "Nice post!",
+        })
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(b"upstream fail", response.content)
 
     @patch("microsub_client.views.micropub.reply", return_value="https://me.example/reply/1")
     def test_successful_reply(self, _mock):
@@ -276,6 +333,25 @@ class MicropubReplyViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         interaction = Interaction.objects.get(kind="reply")
         self.assertEqual(interaction.content, "Nice post!")
+
+    @patch("microsub_client.views.micropub.reply", return_value="https://me.example/reply/2")
+    def test_reply_overwrites_existing_interaction(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.post("/api/micropub/reply/", {
+            "entry_url": "https://example.com/post",
+            "content": "First reply",
+        })
+        _mock.return_value = "https://me.example/reply/3"
+        self.client.post("/api/micropub/reply/", {
+            "entry_url": "https://example.com/post",
+            "content": "Updated reply",
+        })
+        self.assertEqual(Interaction.objects.filter(kind="reply").count(), 1)
+        interaction = Interaction.objects.get(kind="reply")
+        self.assertEqual(interaction.content, "Updated reply")
+        self.assertEqual(interaction.result_url, "https://me.example/reply/3")
 
 
 @override_settings(PADD_ADMIN_URLS=["https://admin.example/"], STORAGES=SIMPLE_STORAGES)
