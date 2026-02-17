@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}New Post — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Compose</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list">
+    <a href="{% url 'index' %}" class="lcars-channel-item">
+      <span class="lcars-channel-name"><i class="fas fa-arrow-left"></i> Back to Timeline</span>
+    </a>
+  </nav>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+</aside>
+{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-new-post">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">New Post</h2>
+  </div>
+
+  {% if success %}
+  <div class="lcars-new-post-success">
+    <div class="lcars-new-post-success-icon"><i class="fas fa-check-circle"></i></div>
+    <p>Post published successfully!</p>
+    {% if result_url %}
+      <a href="{{ result_url }}" class="lcars-button lcars-button-blue" target="_blank" rel="noopener">View Post</a>
+    {% endif %}
+    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange">Write Another</a>
+  </div>
+  {% else %}
+
+  {% if error %}
+  <div class="lcars-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" class="lcars-new-post-form" id="new-post-form">
+    {% csrf_token %}
+
+    <div class="lcars-form-group">
+      <label class="lcars-label" for="post-name">Title (optional)</label>
+      <input type="text" name="name" id="post-name" class="lcars-input"
+             placeholder="Leave blank for a note, add a title for an article">
+    </div>
+
+    <div class="lcars-form-group">
+      <label class="lcars-label" for="post-content">Content</label>
+      <textarea name="content" id="post-content" class="lcars-reply-input" rows="10"
+                placeholder="Write your post in Markdown..."></textarea>
+    </div>
+
+    <div class="lcars-form-group">
+      <label class="lcars-label" for="post-tags">Tags (comma-separated)</label>
+      <input type="text" name="tags" id="post-tags" class="lcars-input"
+             placeholder="e.g. indieweb, web, personal">
+    </div>
+
+    {% if has_media_endpoint %}
+    <div class="lcars-form-group">
+      <label class="lcars-label">Photos</label>
+      <div class="lcars-media-upload">
+        <div class="lcars-media-thumbnails" id="media-thumbnails"></div>
+        <label class="lcars-media-add-btn">
+          <i class="fas fa-plus"></i> Add Photo
+          <input type="file" accept="image/*" id="media-file-input" class="lcars-hidden">
+        </label>
+        <div class="lcars-media-uploading lcars-hidden" id="media-uploading">
+          <div class="lcars-scan-line"></div>
+          Uploading...
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="lcars-form-group">
+      <label class="lcars-label">
+        <input type="checkbox" id="location-toggle"> Include Location
+      </label>
+      <div class="lcars-location-display lcars-hidden" id="location-display">
+        <span id="location-coords"></span>
+        <div class="lcars-location-map" id="location-map"></div>
+        <input type="hidden" name="location" id="location-input">
+      </div>
+    </div>
+
+    <div class="lcars-new-post-actions">
+      <button type="submit" class="lcars-button lcars-button-orange">Publish</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<script>
+(function() {
+  // Initialize EasyMDE
+  var ta = document.getElementById('post-content');
+  if (!ta) return;
+
+  var easymde = new EasyMDE({
+    element: ta,
+    spellChecker: false,
+    status: false,
+    placeholder: 'Write your post in Markdown...',
+    autoDownloadFontAwesome: false,
+    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'unordered-list', 'ordered-list', '|', 'link', 'image', '|', 'preview'],
+    minHeight: '250px',
+    insertTexts: {
+      link: ['[', '](url)'],
+      image: ['![', '](url)'],
+    },
+  });
+
+  // Sync EasyMDE value before form submit
+  var form = document.getElementById('new-post-form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      ta.value = easymde.value();
+    });
+  }
+
+  // Media upload
+  var fileInput = document.getElementById('media-file-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', function() {
+      var file = this.files[0];
+      if (!file) return;
+
+      var uploading = document.getElementById('media-uploading');
+      uploading.classList.remove('lcars-hidden');
+
+      var formData = new FormData();
+      formData.append('file', file);
+
+      fetch('{% url "micropub-media" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        body: formData,
+      })
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        uploading.classList.add('lcars-hidden');
+        if (data.url) {
+          addMediaThumbnail(data.url, file);
+        } else {
+          alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(function(err) {
+        uploading.classList.add('lcars-hidden');
+        alert('Upload failed: ' + err);
+      });
+
+      this.value = '';
+    });
+  }
+
+  function addMediaThumbnail(url, file) {
+    var container = document.getElementById('media-thumbnails');
+    var item = document.createElement('div');
+    item.className = 'lcars-media-thumb';
+
+    var img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    img.alt = file.name;
+
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'lcars-media-thumb-remove';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.onclick = function() { item.remove(); };
+
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'photo';
+    hidden.value = url;
+
+    item.appendChild(img);
+    item.appendChild(removeBtn);
+    item.appendChild(hidden);
+    container.appendChild(item);
+  }
+
+  // Location toggle
+  var locationToggle = document.getElementById('location-toggle');
+  var locationMap = null;
+  if (locationToggle) {
+    locationToggle.addEventListener('change', function() {
+      var display = document.getElementById('location-display');
+      if (this.checked) {
+        display.classList.remove('lcars-hidden');
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(function(pos) {
+            var lat = pos.coords.latitude.toFixed(6);
+            var lng = pos.coords.longitude.toFixed(6);
+            document.getElementById('location-coords').textContent = lat + ', ' + lng;
+            document.getElementById('location-input').value = 'geo:' + lat + ',' + lng;
+
+            // Show map with pin
+            var mapEl = document.getElementById('location-map');
+            mapEl.style.display = 'block';
+            if (locationMap) {
+              locationMap.remove();
+            }
+            locationMap = L.map('location-map', {
+              zoomControl: false,
+              attributionControl: false,
+              dragging: false,
+              scrollWheelZoom: false,
+              doubleClickZoom: false,
+              boxZoom: false,
+              keyboard: false,
+              touchZoom: false,
+            }).setView([lat, lng], 15);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+              maxZoom: 19,
+            }).addTo(locationMap);
+            var pinIcon = L.divIcon({
+              className: 'lcars-map-pin',
+              html: '<div class="lcars-map-pin-dot"></div><div class="lcars-map-pin-ring"></div>',
+              iconSize: [24, 24],
+              iconAnchor: [12, 12],
+            });
+            L.marker([lat, lng], { icon: pinIcon }).addTo(locationMap);
+          }, function() {
+            document.getElementById('location-coords').textContent = 'Unable to get location';
+            locationToggle.checked = false;
+            display.classList.add('lcars-hidden');
+          });
+        } else {
+          document.getElementById('location-coords').textContent = 'Geolocation not supported';
+          locationToggle.checked = false;
+          display.classList.add('lcars-hidden');
+        }
+      } else {
+        display.classList.add('lcars-hidden');
+        document.getElementById('location-input').value = '';
+        if (locationMap) {
+          locationMap.remove();
+          locationMap = null;
+          document.getElementById('location-map').style.display = 'none';
+        }
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

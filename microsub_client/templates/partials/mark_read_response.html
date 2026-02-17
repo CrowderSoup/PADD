@@ -1,0 +1,6 @@
+<span class="lcars-read-status lcars-read">Read</span>
+{% if channels %}
+<nav id="channel-nav" hx-swap-oob="innerHTML:#channel-nav">
+{% include "partials/channel_list.html" %}
+</nav>
+{% endif %}

@@ -11,8 +11,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PADD">
   <link rel="apple-touch-icon" href="{% static 'logo.svg' %}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/easymde@2.18.0/dist/easymde.min.css">
   <link rel="stylesheet" href="{% static 'css/lcars.css' %}">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/easymde@2.18.0/dist/easymde.min.js"></script>
+  {% block extra_head %}{% endblock %}
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <div class="lcars-app">
@@ -59,12 +63,42 @@
         {% block content %}{% endblock %}
       </main>
     </div>
+    {% if request.session.micropub_endpoint and not hide_fab %}
+    <a href="{% url 'new-post' %}" class="lcars-fab" aria-label="New Post">
+      <i class="fas fa-plus"></i>
+    </a>
+    {% endif %}
     <footer class="lcars-footer">
       <div class="lcars-footer-bracket">Personal Aggregation Display Dashboard</div>
       <div class="lcars-footer-bar"></div>
     </footer>
   </div>
 <script>
+function toggleReplyEditor(btn) {
+  var form = btn.closest('.lcars-entry-content').querySelector('.lcars-reply-form');
+  form.classList.toggle('lcars-hidden');
+  if (!form.classList.contains('lcars-hidden') && !form._easymde) {
+    var ta = form.querySelector('textarea[name=content]');
+    form._easymde = new EasyMDE({
+      element: ta,
+      spellChecker: false,
+      status: false,
+      placeholder: 'Write a reply...',
+      autoDownloadFontAwesome: false,
+      toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'unordered-list', 'ordered-list', '|', 'link', 'image', '|', 'preview'],
+      minHeight: '120px',
+      insertTexts: {
+        link: ['[', '](url)'],
+        image: ['![', '](url)'],
+      },
+    });
+    form._easymde.codemirror.focus();
+  } else if (form._easymde && !form.classList.contains('lcars-hidden')) {
+    form._easymde.codemirror.refresh();
+    form._easymde.codemirror.focus();
+  }
+}
+
 function initCollapsibles(root) {
   root.querySelectorAll('.lcars-entry-collapsible:not([data-init])').forEach(el => {
     el.dataset.init = '1';
@@ -94,6 +128,57 @@ document.addEventListener('click', e => {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');
 }
+
+function initMarkReadBehavior(root) {
+  var timeline = root.querySelector ? root.querySelector('#timeline') || document.getElementById('timeline') : document.getElementById('timeline');
+  if (!timeline) return;
+  var behavior = timeline.dataset.markReadBehavior;
+
+  if (behavior === 'scroll_past') {
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(ioEntry) {
+        if (!ioEntry.isIntersecting && ioEntry.boundingClientRect.top < 0) {
+          var el = ioEntry.target;
+          observer.unobserve(el);
+          htmx.ajax('POST', el.dataset.markReadUrl, {
+            values: { channel: el.dataset.channel, entry: el.dataset.entry },
+            target: el,
+            swap: 'innerHTML'
+          });
+        }
+      });
+    }, { threshold: 0 });
+
+    timeline.querySelectorAll('.lcars-entry-read-action').forEach(function(el) {
+      observer.observe(el);
+    });
+  }
+}
+
+document.addEventListener('htmx:afterRequest', function(evt) {
+  var timeline = document.getElementById('timeline');
+  if (!timeline || timeline.dataset.markReadBehavior !== 'interaction') return;
+  var path = evt.detail.pathInfo.requestPath;
+  if (path.match(/\/api\/micropub\/(like|repost|reply)\//)) {
+    if (evt.detail.successful) {
+      var article = evt.detail.elt.closest('.lcars-entry');
+      if (!article) return;
+      var readAction = article.querySelector('.lcars-entry-read-action');
+      if (readAction) {
+        htmx.ajax('POST', readAction.dataset.markReadUrl, {
+          values: { channel: readAction.dataset.channel, entry: readAction.dataset.entry },
+          target: readAction,
+          swap: 'innerHTML'
+        });
+      }
+    }
+  }
+});
+
+initMarkReadBehavior(document);
+document.body.addEventListener('htmx:afterSwap', function(e) {
+  initMarkReadBehavior(e.target);
+});
 </script>
 </body>
 </html>

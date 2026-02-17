@@ -17,4 +17,4 @@ RUN uv run python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-CMD ["uv", "run", "gunicorn", "reader.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
+CMD ["sh", "-c", "uv run manage.py migrate --noinput && uv run gunicorn reader.wsgi:application --bind 0.0.0.0:8000 --workers 2"]

@@ -58,3 +58,29 @@ class Broadcast(models.Model):
 
     def __str__(self):
         return self.message[:80]
+
+
+class UserSettings(models.Model):
+    class MarkReadBehavior(models.TextChoices):
+        EXPLICIT = "explicit", "Explicit"
+        INTERACTION = "interaction", "Interaction"
+        SCROLL_PAST = "scroll_past", "Scroll Past"
+
+    user_url = models.URLField(max_length=2048, unique=True)
+    default_filter = models.CharField(max_length=10, default="all")
+    mark_read_behavior = models.CharField(
+        max_length=20, choices=MarkReadBehavior.choices, default=MarkReadBehavior.EXPLICIT
+    )
+    expand_content = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Settings for {self.user_url}"
+
+
+class DismissedBroadcast(models.Model):
+    user_url = models.URLField(max_length=2048, db_index=True)
+    broadcast = models.ForeignKey(Broadcast, on_delete=models.CASCADE)
+    dismissed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("user_url", "broadcast")]

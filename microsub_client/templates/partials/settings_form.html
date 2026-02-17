@@ -1,0 +1,77 @@
+<div class="lcars-settings-section">
+  <div class="lcars-settings-label">Default Filter</div>
+  <div class="lcars-filter-toggle">
+    <label class="lcars-filter-btn {% if default_filter != 'unread' %}lcars-filter-active{% endif %}">
+      <input type="radio" name="default_filter" value="all"
+             {% if default_filter != "unread" %}checked{% endif %}
+             class="lcars-sr-radio"
+             hx-post="{% url 'settings' %}"
+             hx-include="#settings-form"
+             hx-target="#settings-form"
+             hx-swap="innerHTML">
+      All
+    </label>
+    <label class="lcars-filter-btn {% if default_filter == 'unread' %}lcars-filter-active{% endif %}">
+      <input type="radio" name="default_filter" value="unread"
+             {% if default_filter == "unread" %}checked{% endif %}
+             class="lcars-sr-radio"
+             hx-post="{% url 'settings' %}"
+             hx-include="#settings-form"
+             hx-target="#settings-form"
+             hx-swap="innerHTML">
+      Unread
+    </label>
+  </div>
+</div>
+
+<div class="lcars-settings-section">
+  <div class="lcars-settings-label">Mark as Read</div>
+  <div class="lcars-filter-toggle">
+    <label class="lcars-filter-btn {% if mark_read_behavior == 'explicit' %}lcars-filter-active{% endif %}">
+      <input type="radio" name="mark_read_behavior" value="explicit"
+             {% if mark_read_behavior == "explicit" %}checked{% endif %}
+             class="lcars-sr-radio"
+             hx-post="{% url 'settings' %}"
+             hx-include="#settings-form"
+             hx-target="#settings-form"
+             hx-swap="innerHTML">
+      Explicit
+    </label>
+    <label class="lcars-filter-btn {% if mark_read_behavior == 'interaction' %}lcars-filter-active{% endif %}">
+      <input type="radio" name="mark_read_behavior" value="interaction"
+             {% if mark_read_behavior == "interaction" %}checked{% endif %}
+             class="lcars-sr-radio"
+             hx-post="{% url 'settings' %}"
+             hx-include="#settings-form"
+             hx-target="#settings-form"
+             hx-swap="innerHTML">
+      Interaction
+    </label>
+    <label class="lcars-filter-btn {% if mark_read_behavior == 'scroll_past' %}lcars-filter-active{% endif %}">
+      <input type="radio" name="mark_read_behavior" value="scroll_past"
+             {% if mark_read_behavior == "scroll_past" %}checked{% endif %}
+             class="lcars-sr-radio"
+             hx-post="{% url 'settings' %}"
+             hx-include="#settings-form"
+             hx-target="#settings-form"
+             hx-swap="innerHTML">
+      Scroll Past
+    </label>
+  </div>
+</div>
+
+<div class="lcars-settings-section">
+  <div class="lcars-settings-label">Expand Content by Default</div>
+  <div class="lcars-filter-toggle">
+    <label class="lcars-filter-btn {% if expand_content %}lcars-filter-active{% endif %}">
+      <input type="checkbox" name="expand_content"
+             {% if expand_content %}checked{% endif %}
+             class="lcars-sr-radio"
+             hx-post="{% url 'settings' %}"
+             hx-include="#settings-form"
+             hx-target="#settings-form"
+             hx-swap="innerHTML">
+      Expand
+    </label>
+  </div>
+</div>

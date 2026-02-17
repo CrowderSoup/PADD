@@ -1,4 +1,4 @@
-<article class="lcars-entry lcars-entry-{{ entry.display_type }}">
+<article class="lcars-entry lcars-entry-{{ entry.display_type }}" data-entry-id="{{ entry.entry_id|default:entry.url }}">
   <div class="lcars-entry-indicator"></div>
   <div class="lcars-entry-content">
     <div class="lcars-entry-header">
@@ -23,7 +23,10 @@
                hx-post="{% url 'mark-read' %}"
                hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
                hx-swap="innerHTML"
-               hx-target="this">
+               hx-target="this"
+               data-mark-read-url="{% url 'mark-read' %}"
+               data-channel="{{ channel_uid }}"
+               data-entry="{{ entry.entry_id|default:entry.url }}">
             <span class="lcars-read-status lcars-unread">Mark Read</span>
           </div>
         {% endif %}
@@ -47,7 +50,7 @@
     {% endif %}
 
     {% if entry.safe_content or entry.photo %}
-      <div class="lcars-entry-collapsible">
+      <div class="lcars-entry-collapsible{% if expand_content %} lcars-expanded{% endif %}">
         <div class="lcars-entry-collapse-inner">
           {% if entry.safe_content %}
             <div class="lcars-entry-body">{{ entry.safe_content }}</div>
@@ -60,7 +63,7 @@
             </div>
           {% endif %}
         </div>
-        <button class="lcars-expand-btn" onclick="this.parentElement.classList.toggle('lcars-expanded'); this.textContent = this.parentElement.classList.contains('lcars-expanded') ? 'Collapse' : 'Expand';" type="button">Expand</button>
+        <button class="lcars-expand-btn" onclick="this.parentElement.classList.toggle('lcars-expanded'); this.textContent = this.parentElement.classList.contains('lcars-expanded') ? 'Collapse' : 'Expand';" type="button">{% if expand_content %}Collapse{% else %}Expand{% endif %}</button>
       </div>
     {% endif %}
 
