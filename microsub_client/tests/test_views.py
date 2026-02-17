@@ -44,6 +44,7 @@ class LoginViewTests(TestCase):
         session.save()
         response = self.client.get("/login/")
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/app/")
 
     @patch("microsub_client.views.generate_pkce_pair", return_value=("verifier", "challenge"))
     @patch("microsub_client.views.discover_endpoints", return_value={
@@ -121,7 +122,7 @@ class CallbackViewTests(TestCase):
         session["microsub_endpoint"] = "https://microsub.example/"
         session.save()
         response = self.client.get("/login/callback/", {"code": "abc", "state": "test-state"})
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertRedirects(response, "/app/", fetch_redirect_response=False)
         session = self.client.session
         self.assertEqual(session["access_token"], "tok123")
         self.assertEqual(session["user_name"], "Jane")
@@ -498,6 +499,361 @@ class AdminUserListTests(TestCase):
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
+class MarkUnreadViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/mark-unread/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.mark_unread")
+    def test_missing_params_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/mark-unread/", {})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    @patch("microsub_client.views.api.mark_unread")
+    def test_success_returns_200(self, mock_mark, _mock_ch):
+        mock_mark.return_value = {}
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/mark-unread/", {"channel": "ch1", "entry": "e1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Mark Read", response.content.decode())
+
+    @patch("microsub_client.views.api.mark_unread", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/mark-unread/", {"channel": "ch1", "entry": "e1"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class RemoveEntryViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/timeline/remove/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.remove_entry")
+    def test_missing_params_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/timeline/remove/", {})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.remove_entry")
+    def test_success_returns_empty_200(self, mock_remove):
+        mock_remove.return_value = {}
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/timeline/remove/", {"channel": "ch1", "entry": "e1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+
+    @patch("microsub_client.views.api.remove_entry", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/timeline/remove/", {"channel": "ch1", "entry": "e1"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class ChannelCreateViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/channels/create/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.create_channel")
+    def test_empty_name_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/create/", {"name": ""})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "new", "name": "New"}])
+    @patch("microsub_client.views.api.create_channel", return_value={"uid": "new", "name": "New"})
+    def test_success_returns_channel_list(self, _mock_create, _mock_ch):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/create/", {"name": "New"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("New", response.content.decode())
+
+    @patch("microsub_client.views.api.create_channel", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/create/", {"name": "New"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class ChannelRenameViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/channels/rename/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.update_channel")
+    def test_missing_params_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/rename/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "ch1", "name": "Renamed"}])
+    @patch("microsub_client.views.api.update_channel", return_value={})
+    def test_success_returns_channel_list(self, _mock_update, _mock_ch):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/rename/", {"channel": "ch1", "name": "Renamed"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Renamed", response.content.decode())
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class ChannelDeleteViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/channels/delete/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.delete_channel")
+    def test_missing_channel_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/delete/", {})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    @patch("microsub_client.views.api.delete_channel", return_value={})
+    def test_success_returns_channel_list(self, _mock_del, _mock_ch):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/delete/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 200)
+
+    @patch("microsub_client.views.api.delete_channel", side_effect=api.MicrosubError("Cannot delete"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/delete/", {"channel": "notifications"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class ChannelOrderViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/channels/order/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.order_channels")
+    def test_missing_channels_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/order/", {})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "ch2", "name": "Two"}, {"uid": "ch1", "name": "One"},
+    ])
+    @patch("microsub_client.views.api.order_channels", return_value={})
+    def test_success_returns_channel_list(self, _mock_order, _mock_ch):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/order/", {"channels[]": ["ch2", "ch1"]})
+        self.assertEqual(response.status_code, 200)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class FeedSearchViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/search/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.search_feeds")
+    def test_empty_query_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/search/", {"query": ""})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.search_feeds", return_value={"results": [{"url": "https://feed.example/", "type": "feed"}]})
+    def test_success_returns_results(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/search/", {"query": "example.com", "channel": "ch1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("feed.example", response.content.decode())
+
+    @patch("microsub_client.views.api.search_feeds", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/search/", {"query": "test"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class FeedPreviewViewTests(TestCase):
+    @patch("microsub_client.views.api.preview_feed")
+    def test_missing_url_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/preview/")
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.preview_feed", return_value={"items": [{"name": "Post 1"}]})
+    def test_success_returns_preview(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/preview/?url=https://feed.example/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Post 1", response.content.decode())
+
+    @patch("microsub_client.views.api.preview_feed", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/preview/?url=https://feed.example/")
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class FeedListViewTests(TestCase):
+    @patch("microsub_client.views.api.get_follows", return_value={"items": [{"url": "https://feed.example/"}]})
+    def test_success_returns_feed_list(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/list/ch1/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("feed.example", response.content.decode())
+
+    @patch("microsub_client.views.api.get_follows", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/list/ch1/")
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class FeedFollowViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/follow/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.follow_feed")
+    def test_missing_params_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/follow/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_follows", return_value={"items": [{"url": "https://feed.example/"}]})
+    @patch("microsub_client.views.api.follow_feed", return_value={})
+    def test_success_returns_feed_list(self, _mock_follow, _mock_follows):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/follow/", {"channel": "ch1", "url": "https://feed.example/"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("feed.example", response.content.decode())
+
+    @patch("microsub_client.views.api.follow_feed", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/follow/", {"channel": "ch1", "url": "https://feed.example/"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class FeedUnfollowViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/unfollow/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.unfollow_feed")
+    def test_missing_params_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/unfollow/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_follows", return_value={"items": []})
+    @patch("microsub_client.views.api.unfollow_feed", return_value={})
+    def test_success_returns_updated_feed_list(self, _mock_unfollow, _mock_follows):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/unfollow/", {"channel": "ch1", "url": "https://feed.example/"})
+        self.assertEqual(response.status_code, 200)
+
+    @patch("microsub_client.views.api.unfollow_feed", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/feeds/unfollow/", {"channel": "ch1", "url": "https://feed.example/"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
 class IndexViewTests(TestCase):
     @patch("microsub_client.views.api.get_channels", return_value=[
         {"uid": "home", "name": "Home"},
@@ -506,7 +862,7 @@ class IndexViewTests(TestCase):
         session = self.client.session
         session.update(auth_session())
         session.save()
-        response = self.client.get("/")
+        response = self.client.get("/app/")
         self.assertRedirects(response, "/channel/home/", fetch_redirect_response=False)
 
     @patch("microsub_client.views.api.get_channels", return_value=[
@@ -516,7 +872,7 @@ class IndexViewTests(TestCase):
         session = self.client.session
         session.update(auth_session())
         session.save()
-        response = self.client.get("/")
+        response = self.client.get("/app/")
         self.assertRedirects(response, "/channel/default/", fetch_redirect_response=False)
 
     @patch("microsub_client.views.api.get_channels", side_effect=api.MicrosubError("fail"))
@@ -524,8 +880,24 @@ class IndexViewTests(TestCase):
         session = self.client.session
         session.update(auth_session())
         session.save()
-        response = self.client.get("/")
+        response = self.client.get("/app/")
         self.assertRedirects(response, "/login/", fetch_redirect_response=False)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class LandingViewTests(TestCase):
+    def test_landing_renders_for_anonymous_users(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Captain's Log")
+        self.assertContains(response, "PADD is your personal bridge console for the IndieWeb")
+
+    def test_landing_redirects_authenticated_users(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/")
+        self.assertRedirects(response, "/app/", fetch_redirect_response=False)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)

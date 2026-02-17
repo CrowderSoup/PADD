@@ -1,0 +1,15 @@
+<div class="lcars-channel-add" id="channel-add-form">
+  <button class="lcars-channel-add-toggle" onclick="this.nextElementSibling.classList.toggle('lcars-hidden'); this.classList.toggle('lcars-hidden')" type="button">+ Add Channel</button>
+  <form class="lcars-channel-add-inline lcars-hidden"
+        hx-post="{% url 'channel-create' %}"
+        hx-target="#channel-nav"
+        hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful) { this.reset(); this.classList.add('lcars-hidden'); this.previousElementSibling.classList.remove('lcars-hidden'); }">
+    {% csrf_token %}
+    <input type="text" name="name" class="lcars-input lcars-channel-add-input" placeholder="Channel name" required>
+    <div class="lcars-channel-add-buttons">
+      <button type="submit" class="lcars-button lcars-button-orange lcars-channel-add-submit">Create</button>
+      <button type="button" class="lcars-channel-add-cancel" onclick="this.closest('form').classList.add('lcars-hidden'); this.closest('form').previousElementSibling.classList.remove('lcars-hidden')">Cancel</button>
+    </div>
+  </form>
+</div>

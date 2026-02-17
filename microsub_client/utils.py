@@ -38,6 +38,8 @@ def get_entry_type(entry):
         return "reply"
     if entry.get("bookmark-of"):
         return "bookmark"
+    if entry.get("checkin"):
+        return "checkin"
     if entry.get("photo"):
         return "photo"
     if entry.get("name") and entry.get("name") != entry.get("content", {}).get("text", "")[:100]:

@@ -3,7 +3,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path("", views.index_view, name="index"),
+    path("", views.landing_view, name="landing"),
+    path("app/", views.index_view, name="index"),
     path("offline/", views.offline_view, name="offline"),
     path("sw.js", views.service_worker_view, name="service-worker"),
     path("id", views.client_id_metadata_view, name="client-id-metadata"),
@@ -13,6 +14,17 @@ urlpatterns = [
     path("settings/", views.settings_view, name="settings"),
     path("channel/<path:channel_uid>/", views.timeline_view, name="timeline"),
     path("api/mark-read/", views.mark_read_view, name="mark-read"),
+    path("api/mark-unread/", views.mark_unread_view, name="mark-unread"),
+    path("api/timeline/remove/", views.remove_entry_view, name="timeline-remove"),
+    path("api/channels/create/", views.channel_create_view, name="channel-create"),
+    path("api/channels/rename/", views.channel_rename_view, name="channel-rename"),
+    path("api/channels/delete/", views.channel_delete_view, name="channel-delete"),
+    path("api/channels/order/", views.channel_order_view, name="channel-order"),
+    path("api/feeds/search/", views.feed_search_view, name="feed-search"),
+    path("api/feeds/preview/", views.feed_preview_view, name="feed-preview"),
+    path("api/feeds/list/<path:channel_uid>/", views.feed_list_view, name="feed-list"),
+    path("api/feeds/follow/", views.feed_follow_view, name="feed-follow"),
+    path("api/feeds/unfollow/", views.feed_unfollow_view, name="feed-unfollow"),
     path("new/", views.new_post_view, name="new-post"),
     path("api/micropub/media/", views.upload_media_view, name="micropub-media"),
     path("api/micropub/like/", views.micropub_like_view, name="micropub-like"),

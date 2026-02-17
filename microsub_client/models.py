@@ -72,6 +72,7 @@ class UserSettings(models.Model):
         max_length=20, choices=MarkReadBehavior.choices, default=MarkReadBehavior.EXPLICIT
     )
     expand_content = models.BooleanField(default=False)
+    infinite_scroll = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Settings for {self.user_url}"

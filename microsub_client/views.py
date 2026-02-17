@@ -56,6 +56,12 @@ def client_id_metadata_view(request):
     )
 
 
+def landing_view(request):
+    if request.session.get("access_token"):
+        return redirect("index")
+    return render(request, "landing.html")
+
+
 def login_view(request):
     if request.session.get("access_token"):
         return redirect("index")
@@ -172,12 +178,14 @@ def settings_view(request):
             "mark_read_behavior", UserSettings.MarkReadBehavior.EXPLICIT
         )
         user_settings.expand_content = request.POST.get("expand_content") == "on"
+        user_settings.infinite_scroll = request.POST.get("infinite_scroll") == "on"
         user_settings.save()
         if request.htmx:
             return render(request, "partials/settings_form.html", {
                 "default_filter": user_settings.default_filter,
                 "mark_read_behavior": user_settings.mark_read_behavior,
                 "expand_content": user_settings.expand_content,
+                "infinite_scroll": user_settings.infinite_scroll,
             })
         return redirect("settings")
 
@@ -192,6 +200,7 @@ def settings_view(request):
         "default_filter": user_settings.default_filter,
         "mark_read_behavior": user_settings.mark_read_behavior,
         "expand_content": user_settings.expand_content,
+        "infinite_scroll": user_settings.infinite_scroll,
         "channels": channels,
     })
 
@@ -246,6 +255,38 @@ def _enrich_entries(entries, request):
             entry["safe_content"] = sanitize_content(html)
         if "published" in entry:
             entry["formatted_date"] = format_datetime(entry["published"])
+        lat, lng = None, None
+        loc = entry.get("location")
+        if isinstance(loc, list):
+            loc = loc[0] if loc else None
+        if isinstance(loc, str) and loc.startswith("geo:"):
+            parts = loc[4:].split(",")
+            if len(parts) >= 2:
+                try:
+                    lat, lng = float(parts[0]), float(parts[1])
+                except ValueError:
+                    pass
+        elif isinstance(loc, dict):
+            try:
+                lat = float(loc.get("latitude") or loc.get("lat") or "")
+                lng = float(loc.get("longitude") or loc.get("lng") or loc.get("long") or "")
+            except (ValueError, TypeError):
+                pass
+        # Also extract from checkin h-card (u-checkin with p-latitude/p-longitude)
+        if lat is None:
+            checkin = entry.get("checkin")
+            if isinstance(checkin, list):
+                checkin = checkin[0] if checkin else None
+            if isinstance(checkin, dict):
+                try:
+                    lat = float(checkin.get("latitude") or checkin.get("lat") or "")
+                    lng = float(checkin.get("longitude") or checkin.get("lng") or checkin.get("long") or "")
+                except (ValueError, TypeError):
+                    pass
+        if lat is not None and lng is not None:
+            entry["has_location"] = True
+            entry["location_lat"] = round(lat, 6)
+            entry["location_lng"] = round(lng, 6)
 
     # Look up existing interactions for displayed entries
     if has_micropub and user_url:
@@ -322,6 +363,7 @@ def timeline_view(request, channel_uid):
         "has_micropub": has_micropub,
         "expand_content": user_settings.expand_content,
         "mark_read_behavior": user_settings.mark_read_behavior,
+        "infinite_scroll": user_settings.infinite_scroll,
     }
 
     # HTMX partial for "load more"
@@ -351,13 +393,15 @@ def mark_read_view(request):
     endpoint = request.session["microsub_endpoint"]
     token = request.session["access_token"]
     channel = request.POST.get("channel")
-    entry = request.POST.get("entry")
+    entries = request.POST.getlist("entry")
+    # Also accept entry[] for batch calls
+    entries += request.POST.getlist("entry[]")
 
-    if not channel or not entry:
+    if not channel or not entries:
         return HttpResponse(status=400)
 
     try:
-        api.mark_read(endpoint, token, channel, entry)
+        api.mark_read(endpoint, token, channel, entries)
     except api.MicrosubError:
         return HttpResponse(status=502)
 
@@ -369,6 +413,256 @@ def mark_read_view(request):
     return render(request, "partials/mark_read_response.html", {
         "channels": channels,
         "channel_uid": channel,
+        "entries": entries,
+    })
+
+
+def mark_unread_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel = request.POST.get("channel")
+    entry = request.POST.get("entry")
+
+    if not channel or not entry:
+        return HttpResponse(status=400)
+
+    try:
+        api.mark_unread(endpoint, token, channel, entry)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    try:
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        channels = []
+
+    return render(request, "partials/mark_unread_response.html", {
+        "channels": channels,
+        "channel_uid": channel,
+        "entry_id": entry,
+    })
+
+
+def remove_entry_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel = request.POST.get("channel")
+    entry = request.POST.get("entry")
+
+    if not channel or not entry:
+        return HttpResponse(status=400)
+
+    try:
+        api.remove_entry(endpoint, token, channel, entry)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return HttpResponse("")
+
+
+# --- Channel Management Views ---
+
+
+def channel_create_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    name = request.POST.get("name", "").strip()
+
+    if not name:
+        return HttpResponse(status=400)
+
+    try:
+        api.create_channel(endpoint, token, name)
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/channel_list.html", {
+        "channels": channels,
+    })
+
+
+def channel_rename_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel_uid = request.POST.get("channel")
+    name = request.POST.get("name", "").strip()
+
+    if not channel_uid or not name:
+        return HttpResponse(status=400)
+
+    try:
+        api.update_channel(endpoint, token, channel_uid, name)
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/channel_list.html", {
+        "channels": channels,
+    })
+
+
+def channel_delete_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel_uid = request.POST.get("channel")
+
+    if not channel_uid:
+        return HttpResponse(status=400)
+
+    try:
+        api.delete_channel(endpoint, token, channel_uid)
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError as exc:
+        return HttpResponse(str(exc), status=502)
+
+    return render(request, "partials/channel_list.html", {
+        "channels": channels,
+    })
+
+
+def channel_order_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel_uids = request.POST.getlist("channels[]")
+
+    if not channel_uids:
+        return HttpResponse(status=400)
+
+    try:
+        api.order_channels(endpoint, token, channel_uids)
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/channel_list.html", {
+        "channels": channels,
+    })
+
+
+# --- Feed Management Views ---
+
+
+def feed_search_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    query = request.POST.get("query", "").strip()
+    channel_uid = request.POST.get("channel", "")
+
+    if not query:
+        return HttpResponse(status=400)
+
+    try:
+        result = api.search_feeds(endpoint, token, query)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/feed_search_results.html", {
+        "results": result.get("results", []),
+        "channel_uid": channel_uid,
+    })
+
+
+def feed_preview_view(request):
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    url = request.GET.get("url", "").strip()
+
+    if not url:
+        return HttpResponse(status=400)
+
+    try:
+        result = api.preview_feed(endpoint, token, url)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/feed_preview.html", {
+        "items": result.get("items", []),
+        "url": url,
+    })
+
+
+def feed_list_view(request, channel_uid):
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+
+    try:
+        result = api.get_follows(endpoint, token, channel_uid)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/feed_panel.html", {
+        "feeds": result.get("items", []),
+        "channel_uid": channel_uid,
+    })
+
+
+def feed_follow_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel_uid = request.POST.get("channel")
+    url = request.POST.get("url", "").strip()
+
+    if not channel_uid or not url:
+        return HttpResponse(status=400)
+
+    try:
+        api.follow_feed(endpoint, token, channel_uid, url)
+        result = api.get_follows(endpoint, token, channel_uid)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/feed_list.html", {
+        "feeds": result.get("items", []),
+        "channel_uid": channel_uid,
+    })
+
+
+def feed_unfollow_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel_uid = request.POST.get("channel")
+    url = request.POST.get("url", "").strip()
+
+    if not channel_uid or not url:
+        return HttpResponse(status=400)
+
+    try:
+        api.unfollow_feed(endpoint, token, channel_uid, url)
+        result = api.get_follows(endpoint, token, channel_uid)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/feed_list.html", {
+        "feeds": result.get("items", []),
+        "channel_uid": channel_uid,
     })
 
 

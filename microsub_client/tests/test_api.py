@@ -103,11 +103,154 @@ class GetTimelineTests(TestCase):
 
 class MarkReadTests(TestCase):
     @patch("microsub_client.api._request")
-    def test_sends_correct_data(self, mock_req):
+    def test_sends_correct_data_single_string(self, mock_req):
         mock_req.return_value = {}
         api.mark_read("https://api.example/", "token", "ch1", "entry1")
         data = mock_req.call_args[1]["data"]
+        data_dict = {}
+        entry_list = []
+        for key, val in data:
+            if key == "entry[]":
+                entry_list.append(val)
+            else:
+                data_dict[key] = val
+        self.assertEqual(data_dict["action"], "timeline")
+        self.assertEqual(data_dict["method"], "mark_read")
+        self.assertEqual(data_dict["channel"], "ch1")
+        self.assertEqual(entry_list, ["entry1"])
+
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data_multiple_entries(self, mock_req):
+        mock_req.return_value = {}
+        api.mark_read("https://api.example/", "token", "ch1", ["e1", "e2", "e3"])
+        data = mock_req.call_args[1]["data"]
+        entry_list = [val for key, val in data if key == "entry[]"]
+        self.assertEqual(entry_list, ["e1", "e2", "e3"])
+
+
+class MarkUnreadTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.mark_unread("https://api.example/", "token", "ch1", "entry1")
+        data = mock_req.call_args[1]["data"]
         self.assertEqual(data["action"], "timeline")
-        self.assertEqual(data["method"], "mark_read")
+        self.assertEqual(data["method"], "mark_unread")
         self.assertEqual(data["channel"], "ch1")
         self.assertEqual(data["entry[]"], "entry1")
+
+
+class RemoveEntryTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.remove_entry("https://api.example/", "token", "ch1", "entry1")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "timeline")
+        self.assertEqual(data["method"], "remove")
+        self.assertEqual(data["channel"], "ch1")
+        self.assertEqual(data["entry[]"], "entry1")
+
+
+class CreateChannelTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {"uid": "new-ch", "name": "New Channel"}
+        result = api.create_channel("https://api.example/", "token", "New Channel")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "channels")
+        self.assertEqual(data["name"], "New Channel")
+        self.assertEqual(result["uid"], "new-ch")
+
+
+class UpdateChannelTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.update_channel("https://api.example/", "token", "ch1", "Renamed")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "channels")
+        self.assertEqual(data["channel"], "ch1")
+        self.assertEqual(data["name"], "Renamed")
+
+
+class DeleteChannelTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.delete_channel("https://api.example/", "token", "ch1")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "channels")
+        self.assertEqual(data["channel"], "ch1")
+        self.assertEqual(data["method"], "delete")
+
+
+class OrderChannelsTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.order_channels("https://api.example/", "token", ["ch1", "ch2", "ch3"])
+        data = mock_req.call_args[1]["data"]
+        # data is a list of tuples for repeated keys
+        data_dict = {}
+        channels_list = []
+        for key, val in data:
+            if key == "channels[]":
+                channels_list.append(val)
+            else:
+                data_dict[key] = val
+        self.assertEqual(data_dict["action"], "channels")
+        self.assertEqual(data_dict["method"], "order")
+        self.assertEqual(channels_list, ["ch1", "ch2", "ch3"])
+
+
+class SearchFeedsTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {"results": []}
+        api.search_feeds("https://api.example/", "token", "example.com")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "search")
+        self.assertEqual(data["query"], "example.com")
+
+
+class PreviewFeedTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_params(self, mock_req):
+        mock_req.return_value = {"items": []}
+        api.preview_feed("https://api.example/", "token", "https://feed.example/")
+        params = mock_req.call_args[1]["params"]
+        self.assertEqual(params["action"], "preview")
+        self.assertEqual(params["url"], "https://feed.example/")
+
+
+class GetFollowsTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_params(self, mock_req):
+        mock_req.return_value = {"items": []}
+        api.get_follows("https://api.example/", "token", "ch1")
+        params = mock_req.call_args[1]["params"]
+        self.assertEqual(params["action"], "follow")
+        self.assertEqual(params["channel"], "ch1")
+
+
+class FollowFeedTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.follow_feed("https://api.example/", "token", "ch1", "https://feed.example/")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "follow")
+        self.assertEqual(data["channel"], "ch1")
+        self.assertEqual(data["url"], "https://feed.example/")
+
+
+class UnfollowFeedTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_sends_correct_data(self, mock_req):
+        mock_req.return_value = {}
+        api.unfollow_feed("https://api.example/", "token", "ch1", "https://feed.example/")
+        data = mock_req.call_args[1]["data"]
+        self.assertEqual(data["action"], "unfollow")
+        self.assertEqual(data["channel"], "ch1")
+        self.assertEqual(data["url"], "https://feed.example/")

@@ -1,0 +1,22 @@
+{% if items %}
+<div class="lcars-feed-preview">
+  <div class="lcars-feed-preview-header">
+    <span class="lcars-sidebar-label">Preview: {{ url }}</span>
+  </div>
+  {% for item in items|slice:":5" %}
+  <div class="lcars-feed-preview-item">
+    {% if item.name %}<strong>{{ item.name }}</strong>{% endif %}
+    {% if item.content.text %}
+      <p>{{ item.content.text|truncatewords:30 }}</p>
+    {% elif item.content.html %}
+      <p>{{ item.content.html|striptags|truncatewords:30 }}</p>
+    {% endif %}
+    {% if item.published %}
+      <time class="lcars-entry-date">{{ item.published }}</time>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="lcars-empty">No preview available</div>
+{% endif %}
