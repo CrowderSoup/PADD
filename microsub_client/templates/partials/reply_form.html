@@ -2,7 +2,8 @@
       hx-post="{% url 'micropub-reply' %}"
       hx-vals='{"entry_url": "{{ entry_url }}"}'
       hx-swap="none"
-      hx-on::before-request="if(this._easymde){this.querySelector('textarea[name=content]').value=this._easymde.value()}if(!this.querySelector('textarea[name=content]').value.trim()){event.preventDefault();this.classList.add('lcars-reply-error');return}"
+      hx-on::config-request="if(this._easymde){event.detail.parameters.content=this._easymde.value()}"
+      hx-on::before-request="if(!event.detail.requestConfig.parameters.content||!event.detail.requestConfig.parameters.content.trim()){event.preventDefault();this.classList.add('lcars-reply-error');return}"
       hx-on::after-request="if(event.detail.successful){var c=this.closest('.lcars-entry-content'),t=document.createElement('div');t.innerHTML=event.detail.xhr.responseText;var btn=t.querySelector('[data-reply-button]'),sent=t.querySelector('[data-reply-sent]');c.querySelector('.lcars-reply-wrapper').innerHTML=btn.innerHTML;c.querySelector('.lcars-interactions').insertAdjacentHTML('afterend',sent.innerHTML);this.remove()}else{var err=this.querySelector('.lcars-reply-error-msg');if(!err){err=document.createElement('div');err.className='lcars-reply-error-msg';this.insertBefore(err,this.querySelector('button'))}err.textContent=event.detail.xhr.responseText||'Something went wrong'}">
   <textarea name="content" class="lcars-reply-input"
             placeholder="Write a reply..." rows="3"></textarea>
