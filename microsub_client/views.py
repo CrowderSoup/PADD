@@ -556,9 +556,13 @@ def micropub_reply_view(request):
     token = request.session["access_token"]
     user_url = request.session["user_url"]
     entry_url = request.POST.get("entry_url")
+    if not entry_url:
+        return HttpResponse("Entry URL is required", status=400)
     content = request.POST.get("content", "").strip()
-    if not entry_url or not content:
-        return HttpResponse(status=400)
+    if not content:
+        return HttpResponse("Content is required", status=400)
+    if len(content) > 50_000:
+        return HttpResponse("Content is too long", status=400)
 
     cached = _get_or_create_cached_entry(entry_url)
 
