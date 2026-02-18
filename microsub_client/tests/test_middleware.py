@@ -16,12 +16,17 @@ class MicrosubAuthMiddlewareTests(TestCase):
         request.session = session or {}
         return request
 
+    def test_public_path_root_allowed(self):
+        request = self._make_request("/")
+        self.middleware(request)
+        self.get_response.assert_called_once_with(request)
+
     def test_public_path_login_allowed(self):
         request = self._make_request("/login/")
         self.middleware(request)
         self.get_response.assert_called_once_with(request)
 
-    def test_public_path_callback_allowed(self):
+    def test_public_path_login_prefix_allowed(self):
         request = self._make_request("/login/callback/")
         self.middleware(request)
         self.get_response.assert_called_once_with(request)

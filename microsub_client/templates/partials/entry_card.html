@@ -17,7 +17,13 @@
           <time class="lcars-entry-date">{{ entry.formatted_date }}</time>
         {% endif %}
         {% if entry.is_read %}
-          <span class="lcars-read-status lcars-read">Read</span>
+          <div class="lcars-entry-read-action"
+               hx-post="{% url 'mark-unread' %}"
+               hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
+               hx-swap="outerHTML"
+               hx-target="this">
+            <span class="lcars-read-status lcars-read">Read</span>
+          </div>
         {% else %}
           <div class="lcars-entry-read-action"
                hx-post="{% url 'mark-read' %}"
@@ -26,10 +32,20 @@
                hx-target="this"
                data-mark-read-url="{% url 'mark-read' %}"
                data-channel="{{ channel_uid }}"
-               data-entry="{{ entry.entry_id|default:entry.url }}">
+               data-entry="{{ entry.entry_id|default:entry.url }}"
+               data-entry-read="{{ entry.entry_id|default:entry.url }}">
             <span class="lcars-read-status lcars-unread">Mark Read</span>
           </div>
         {% endif %}
+        <button class="lcars-entry-remove-btn"
+                hx-post="{% url 'timeline-remove' %}"
+                hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
+                hx-target="closest article"
+                hx-swap="outerHTML"
+                hx-confirm="Remove this entry?"
+                title="Remove entry">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+        </button>
       </div>
     </div>
 
@@ -47,6 +63,8 @@
       <p class="lcars-entry-action">In reply to <a href="{{ entry.in_reply_to }}" target="_blank" rel="noopener">{{ entry.in_reply_to }}</a></p>
     {% elif entry.display_type == "bookmark" %}
       <p class="lcars-entry-action">Bookmarked <a href="{{ entry.bookmark_of }}" target="_blank" rel="noopener">{{ entry.bookmark_of }}</a></p>
+    {% elif entry.display_type == "checkin" %}
+      <p class="lcars-entry-action"><i class="fas fa-map-marker-alt"></i> Checked in</p>
     {% endif %}
 
     {% if entry.safe_content or entry.photo %}
@@ -69,6 +87,22 @@
 
     {% if entry.url and not entry.name %}
       <a href="{{ entry.url }}" class="lcars-entry-permalink" target="_blank" rel="noopener">{{ entry.url }}</a>
+    {% endif %}
+
+    {% if entry.has_location %}
+    <div class="lcars-location-display">
+      <span>{{ entry.location_lat }}, {{ entry.location_lng }}</span>
+      <div class="lcars-location-map lcars-entry-map" style="display:block;"
+           data-lat="{{ entry.location_lat }}" data-lng="{{ entry.location_lng }}"></div>
+    </div>
+    {% endif %}
+
+    {% if entry.category %}
+    <div class="lcars-entry-tags">
+      {% for t in entry.category %}
+        <span class="lcars-entry-tag">{{ t }}</span>
+      {% endfor %}
+    </div>
     {% endif %}
 
     {% if has_micropub and entry.url %}

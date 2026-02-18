@@ -1,0 +1,57 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PADD — LCARS Reader Console</title>
+  <link rel="manifest" href="{% static 'manifest.json' %}">
+  <meta name="theme-color" content="#f1c86e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PADD">
+  <link rel="apple-touch-icon" href="{% static 'logo.svg' %}">
+  <link rel="stylesheet" href="{% static 'css/lcars.css' %}">
+</head>
+<body>
+  <div class="lcars-app">
+    <header class="lcars-header">
+      <div class="lcars-header-bracket"></div>
+      <div class="lcars-header-bar">
+        <span class="lcars-header-title">
+          <img src="{% static 'wordmark.svg' %}" alt="PADD">
+        </span>
+      </div>
+    </header>
+    <main class="lcars-landing-container">
+      <section class="lcars-landing-hero">
+        <p class="lcars-landing-kicker">Captain's Log</p>
+        <h1 class="lcars-landing-title">PADD is your console for the IndieWeb.</h1>
+        <p class="lcars-landing-copy">
+          PADD aggregates your feeds through Microsub, lets you triage channels, and gives you command controls for replies, likes, reposts, and publishing via Micropub.
+        </p>
+      </section>
+      <section class="lcars-landing-actions">
+        <article class="lcars-landing-panel">
+          <h2 class="lcars-landing-panel-title">Returning Crew: Log In</h2>
+          <p class="lcars-landing-panel-copy">If you already have a domain and IndieAuth configured, proceed directly to authentication.</p>
+          <a href="{% url 'login' %}" class="lcars-button lcars-button-orange lcars-landing-cta">Engage Login</a>
+        </article>
+        <article class="lcars-landing-panel">
+          <h2 class="lcars-landing-panel-title">New Crew: Sign Up</h2>
+          <p class="lcars-landing-panel-copy">PADD uses your domain as your identity. Start by setting up a site and IndieAuth, then return to log in.</p>
+          <a href="https://indieweb.org/Getting_Started" class="lcars-button lcars-button-blue lcars-landing-cta" target="_blank" rel="noopener noreferrer">Begin Setup</a>
+        </article>
+      </section>
+    </main>
+    <footer class="lcars-footer">
+      <div class="lcars-footer-bracket">Personal Aggregation Display Dashboard</div>
+      <div class="lcars-footer-bar"></div>
+    </footer>
+  </div>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

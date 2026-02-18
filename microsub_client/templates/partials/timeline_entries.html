@@ -33,6 +33,18 @@
 {% endfor %}
 
 {% if after_cursor %}
+{% if infinite_scroll %}
+<div class="lcars-load-more lcars-load-more-sentinel"
+     hx-get="{% url 'timeline' channel_uid=channel_uid %}?after={{ after_cursor }}{% if unread_only %}&unread=1{% endif %}"
+     hx-trigger="intersect once root:#main-content"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-indicator="#lcars-loading">
+  <div class="lcars-infinite-indicator">
+    <div class="lcars-scan-line"></div>
+  </div>
+</div>
+{% else %}
 <div class="lcars-load-more">
   <button class="lcars-button lcars-button-blue"
           hx-get="{% url 'timeline' channel_uid=channel_uid %}?after={{ after_cursor }}{% if unread_only %}&unread=1{% endif %}"
@@ -42,6 +54,7 @@
     More Entries
   </button>
 </div>
+{% endif %}
 {% endif %}
 
 {% if wrap_full %}

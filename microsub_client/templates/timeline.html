@@ -11,6 +11,7 @@
   <nav class="lcars-channel-list" id="channel-nav">
     {% include "partials/channel_list.html" %}
   </nav>
+  {% include "partials/channel_management.html" %}
   <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
   {% if has_micropub %}
   <div class="lcars-sidebar-new-post">
@@ -19,6 +20,7 @@
     </a>
   </div>
   {% endif %}
+  <div id="feed-panel"></div>
 </aside>
 {% endblock %}
 

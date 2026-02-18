@@ -1,0 +1,23 @@
+<div class="lcars-feed-panel-header">
+  <button class="lcars-feed-panel-back" onclick="var panel=document.getElementById('feed-panel'); panel.classList.remove('lcars-feed-panel-open'); panel.innerHTML=''" type="button">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 2 4 7 9 12"/></svg>
+    Back
+  </button>
+  <span class="lcars-feed-panel-title">Manage Feeds</span>
+</div>
+<div class="lcars-feed-search">
+  <form hx-post="{% url 'feed-search' %}"
+        hx-target="#feed-search-results"
+        hx-swap="innerHTML"
+        hx-indicator="#feed-search-loading">
+    {% csrf_token %}
+    <input type="hidden" name="channel" value="{{ channel_uid }}">
+    <input type="text" name="query" class="lcars-input lcars-feed-search-input" placeholder="Search or enter feed URL" required>
+    <button type="submit" class="lcars-button lcars-button-blue lcars-feed-search-btn">Search</button>
+  </form>
+  <div id="feed-search-loading" class="lcars-loading"><div class="lcars-scan-line"></div></div>
+  <div id="feed-search-results"></div>
+</div>
+<div class="lcars-feed-current" id="feed-current-list">
+  {% include "partials/feed_list.html" %}
+</div>

@@ -62,16 +62,30 @@
 
 <div class="lcars-settings-section">
   <div class="lcars-settings-label">Expand Content by Default</div>
-  <div class="lcars-filter-toggle">
-    <label class="lcars-filter-btn {% if expand_content %}lcars-filter-active{% endif %}">
-      <input type="checkbox" name="expand_content"
-             {% if expand_content %}checked{% endif %}
-             class="lcars-sr-radio"
-             hx-post="{% url 'settings' %}"
-             hx-include="#settings-form"
-             hx-target="#settings-form"
-             hx-swap="innerHTML">
-      Expand
-    </label>
-  </div>
+  <label class="lcars-toggle-label">
+    <input type="checkbox" name="expand_content"
+           {% if expand_content %}checked{% endif %}
+           class="lcars-toggle-input"
+           hx-post="{% url 'settings' %}"
+           hx-include="#settings-form"
+           hx-target="#settings-form"
+           hx-swap="innerHTML">
+    <span class="lcars-toggle-track"><span class="lcars-toggle-thumb"></span></span>
+    <span>{% if expand_content %}On{% else %}Off{% endif %}</span>
+  </label>
+</div>
+
+<div class="lcars-settings-section">
+  <div class="lcars-settings-label">Infinite Scroll</div>
+  <label class="lcars-toggle-label">
+    <input type="checkbox" name="infinite_scroll"
+           {% if infinite_scroll %}checked{% endif %}
+           class="lcars-toggle-input"
+           hx-post="{% url 'settings' %}"
+           hx-include="#settings-form"
+           hx-target="#settings-form"
+           hx-swap="innerHTML">
+    <span class="lcars-toggle-track"><span class="lcars-toggle-thumb"></span></span>
+    <span>{% if infinite_scroll %}On{% else %}Off{% endif %}</span>
+  </label>
 </div>

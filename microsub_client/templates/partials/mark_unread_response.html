@@ -1,0 +1,15 @@
+<div class="lcars-entry-read-action"
+     hx-post="{% url 'mark-read' %}"
+     hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry_id }}"}'
+     hx-swap="innerHTML"
+     hx-target="this"
+     data-mark-read-url="{% url 'mark-read' %}"
+     data-channel="{{ channel_uid }}"
+     data-entry="{{ entry_id }}">
+    <span class="lcars-read-status lcars-unread">Mark Read</span>
+</div>
+{% if channels %}
+<nav id="channel-nav" hx-swap-oob="innerHTML:#channel-nav">
+{% include "partials/channel_list.html" %}
+</nav>
+{% endif %}
