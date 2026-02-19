@@ -232,8 +232,94 @@ def index_view(request):
     return redirect("timeline", channel_uid=first.get("uid", "default"))
 
 
+def _parse_location(entry):
+    """Extract latitude and longitude from an entry's location or checkin data.
+
+    Handles three formats:
+    - geo: URI strings (e.g. "geo:37.786,-122.399")
+    - dicts with latitude/lat and longitude/lng/long keys
+    - checkin h-card dicts (u-checkin with p-latitude/p-longitude)
+
+    Returns:
+        tuple: (lat, lng) as floats, or (None, None) if no valid location found.
+    """
+    loc = entry.get("location")
+    if isinstance(loc, list):
+        loc = loc[0] if loc else None
+
+    if isinstance(loc, str) and loc.startswith("geo:"):
+        parts = loc[4:].split(",")
+        if len(parts) >= 2:
+            try:
+                return float(parts[0]), float(parts[1])
+            except ValueError:
+                pass
+    elif isinstance(loc, dict):
+        try:
+            lat = float(loc.get("latitude") or loc.get("lat") or "")
+            lng = float(loc.get("longitude") or loc.get("lng") or loc.get("long") or "")
+            return lat, lng
+        except (ValueError, TypeError):
+            pass
+
+    # Fall back to checkin h-card (u-checkin with p-latitude/p-longitude)
+    checkin = entry.get("checkin")
+    if isinstance(checkin, list):
+        checkin = checkin[0] if checkin else None
+    if isinstance(checkin, dict):
+        try:
+            lat = float(checkin.get("latitude") or checkin.get("lat") or "")
+            lng = float(checkin.get("longitude") or checkin.get("lng") or checkin.get("long") or "")
+            return lat, lng
+        except (ValueError, TypeError):
+            pass
+
+    return None, None
+
+
+def _lookup_interactions(entries, user_url):
+    """Query the database for existing interactions on the given entries.
+
+    Args:
+        entries: List of entry dicts, each expected to have a "url" key.
+        user_url: The authenticated user's profile URL.
+
+    Returns:
+        tuple: (interaction_set, interaction_data) where
+            - interaction_set is a set of "url:kind" strings for fast membership testing
+            - interaction_data is a dict of "url:kind" -> {"content": ..., "result_url": ...}
+    """
+    entry_urls = [e.get("url") for e in entries if e.get("url")]
+    interaction_set = set()
+    interaction_data = {}
+    if entry_urls:
+        existing = Interaction.objects.filter(
+            user_url=user_url,
+            entry__url__in=entry_urls,
+        ).values_list("entry__url", "kind", "content", "result_url")
+        for url, kind, content, result_url in existing:
+            interaction_set.add(f"{url}:{kind}")
+            interaction_data[f"{url}:{kind}"] = {
+                "content": content,
+                "result_url": result_url,
+            }
+    return interaction_set, interaction_data
+
+
 def _enrich_entries(entries, request):
-    """Add template-friendly fields to entry dicts."""
+    """Add template-friendly fields to entry dicts, mutating each entry in place.
+
+    Normalizes field names, sanitizes HTML content, formats dates, extracts
+    location coordinates, and annotates each entry with the user's interaction
+    state (liked, reposted, replied).
+
+    Args:
+        entries: List of entry dicts from the Microsub API.
+        request: The current Django request (reads session for endpoint/user info).
+
+    Returns:
+        bool: True if the user has a Micropub endpoint configured.
+    """
     has_micropub = bool(request.session.get("micropub_endpoint"))
     user_url = request.session.get("user_url", "")
 
@@ -248,63 +334,18 @@ def _enrich_entries(entries, request):
             entry["is_read"] = entry["_is_read"]
         if "content" in entry:
             content = entry["content"]
-            if isinstance(content, dict):
-                html = content.get("html", content.get("text", ""))
-            else:
-                html = content
+            html = content.get("html", content.get("text", "")) if isinstance(content, dict) else content
             entry["safe_content"] = sanitize_content(html)
         if "published" in entry:
             entry["formatted_date"] = format_datetime(entry["published"])
-        lat, lng = None, None
-        loc = entry.get("location")
-        if isinstance(loc, list):
-            loc = loc[0] if loc else None
-        if isinstance(loc, str) and loc.startswith("geo:"):
-            parts = loc[4:].split(",")
-            if len(parts) >= 2:
-                try:
-                    lat, lng = float(parts[0]), float(parts[1])
-                except ValueError:
-                    pass
-        elif isinstance(loc, dict):
-            try:
-                lat = float(loc.get("latitude") or loc.get("lat") or "")
-                lng = float(loc.get("longitude") or loc.get("lng") or loc.get("long") or "")
-            except (ValueError, TypeError):
-                pass
-        # Also extract from checkin h-card (u-checkin with p-latitude/p-longitude)
-        if lat is None:
-            checkin = entry.get("checkin")
-            if isinstance(checkin, list):
-                checkin = checkin[0] if checkin else None
-            if isinstance(checkin, dict):
-                try:
-                    lat = float(checkin.get("latitude") or checkin.get("lat") or "")
-                    lng = float(checkin.get("longitude") or checkin.get("lng") or checkin.get("long") or "")
-                except (ValueError, TypeError):
-                    pass
+        lat, lng = _parse_location(entry)
         if lat is not None and lng is not None:
             entry["has_location"] = True
             entry["location_lat"] = round(lat, 6)
             entry["location_lng"] = round(lng, 6)
 
-    # Look up existing interactions for displayed entries
     if has_micropub and user_url:
-        entry_urls = [e.get("url") for e in entries if e.get("url")]
-        interaction_set = set()
-        interaction_data = {}
-        if entry_urls:
-            existing = Interaction.objects.filter(
-                user_url=user_url,
-                entry__url__in=entry_urls,
-            ).values_list("entry__url", "kind", "content", "result_url")
-            for url, kind, content, result_url in existing:
-                interaction_set.add(f"{url}:{kind}")
-                interaction_data[f"{url}:{kind}"] = {
-                    "content": content,
-                    "result_url": result_url,
-                }
-
+        interaction_set, interaction_data = _lookup_interactions(entries, user_url)
         for entry in entries:
             entry_url = entry.get("url", "")
             entry["user_liked"] = f"{entry_url}:like" in interaction_set
@@ -761,7 +802,19 @@ def upload_media_view(request):
     return JsonResponse({"url": url})
 
 
-def micropub_like_view(request):
+def _handle_simple_micropub_interaction(request, kind):
+    """Shared handler for idempotent single-URL micropub interactions (like, repost).
+
+    Checks for an existing interaction before posting to avoid duplicates.
+    On success, creates an Interaction record and returns the interaction_buttons partial.
+
+    Args:
+        request: The current Django request.
+        kind: "like" or "repost".
+
+    Returns:
+        HttpResponse
+    """
     if request.method != "POST":
         return HttpResponse(status=405)
 
@@ -776,67 +829,33 @@ def micropub_like_view(request):
         return HttpResponse(status=400)
 
     cached = _get_or_create_cached_entry(entry_url)
-    existing = Interaction.objects.filter(
-        user_url=user_url, entry=cached, kind="like"
-    ).first()
+    existing = Interaction.objects.filter(user_url=user_url, entry=cached, kind=kind).first()
     if existing:
         return render(request, "partials/interaction_buttons.html", {
-            "kind": "like", "active": True, "entry_url": entry_url,
+            "kind": kind, "active": True, "entry_url": entry_url,
             "result_url": existing.result_url,
         })
 
+    micropub_fn = micropub.like if kind == "like" else micropub.repost
     try:
-        result_url = micropub.like(mp_endpoint, token, entry_url)
+        result_url = micropub_fn(mp_endpoint, token, entry_url)
     except micropub.MicropubError as exc:
         return HttpResponse(f"Error: {exc}", status=502)
 
-    Interaction.objects.create(
-        user_url=user_url, entry=cached, kind="like", result_url=result_url,
-    )
+    Interaction.objects.create(user_url=user_url, entry=cached, kind=kind, result_url=result_url)
 
     return render(request, "partials/interaction_buttons.html", {
-        "kind": "like", "active": True, "entry_url": entry_url,
+        "kind": kind, "active": True, "entry_url": entry_url,
         "result_url": result_url,
     })
+
+
+def micropub_like_view(request):
+    return _handle_simple_micropub_interaction(request, "like")
 
 
 def micropub_repost_view(request):
-    if request.method != "POST":
-        return HttpResponse(status=405)
-
-    mp_endpoint = request.session.get("micropub_endpoint")
-    if not mp_endpoint:
-        return HttpResponse("Micropub not available", status=400)
-
-    token = request.session["access_token"]
-    user_url = request.session["user_url"]
-    entry_url = request.POST.get("entry_url")
-    if not entry_url:
-        return HttpResponse(status=400)
-
-    cached = _get_or_create_cached_entry(entry_url)
-    existing = Interaction.objects.filter(
-        user_url=user_url, entry=cached, kind="repost"
-    ).first()
-    if existing:
-        return render(request, "partials/interaction_buttons.html", {
-            "kind": "repost", "active": True, "entry_url": entry_url,
-            "result_url": existing.result_url,
-        })
-
-    try:
-        result_url = micropub.repost(mp_endpoint, token, entry_url)
-    except micropub.MicropubError as exc:
-        return HttpResponse(f"Error: {exc}", status=502)
-
-    Interaction.objects.create(
-        user_url=user_url, entry=cached, kind="repost", result_url=result_url,
-    )
-
-    return render(request, "partials/interaction_buttons.html", {
-        "kind": "repost", "active": True, "entry_url": entry_url,
-        "result_url": result_url,
-    })
+    return _handle_simple_micropub_interaction(request, "repost")
 
 
 def micropub_reply_view(request):

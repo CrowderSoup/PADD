@@ -890,7 +890,7 @@ class LandingViewTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Captain's Log")
-        self.assertContains(response, "PADD is your personal bridge console for the IndieWeb")
+        self.assertContains(response, "PADD is your console for the IndieWeb")
 
     def test_landing_redirects_authenticated_users(self):
         session = self.client.session
