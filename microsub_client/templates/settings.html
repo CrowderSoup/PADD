@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Channels</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list" id="channel-nav">
+    {% include "partials/channel_list.html" %}
+  </nav>
+  {% include "partials/channel_management.html" %}
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+  <div id="feed-panel"></div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-settings">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">Settings</h2>
+  </div>
+
+  <form id="settings-form">
+    {% csrf_token %}
+    {% include "partials/settings_form.html" %}
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% if wrap_full %}
+<div class="lcars-timeline-header" id="timeline-header">
+  <h2 class="lcars-channel-title" id="channel-title">{{ channel_name }}</h2>
+  <div class="lcars-filter-toggle">
+    {% if unread_only %}
+      <a href="{% url 'timeline' channel_uid=channel_uid %}"
+         class="lcars-filter-btn"
+         hx-get="{% url 'timeline' channel_uid=channel_uid %}"
+         hx-target="#timeline"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">All</a>
+      <span class="lcars-filter-btn lcars-filter-active">Unread</span>
+    {% else %}
+      <span class="lcars-filter-btn lcars-filter-active">All</span>
+      <a href="{% url 'timeline' channel_uid=channel_uid %}?unread=1"
+         class="lcars-filter-btn"
+         hx-get="{% url 'timeline' channel_uid=channel_uid %}?unread=1"
+         hx-target="#timeline"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">Unread</a>
+    {% endif %}
+  </div>
+</div>
+<div id="timeline-entries">
+{% endif %}
+
+{% for entry in entries %}
+  {% include "partials/entry_card.html" %}
+{% empty %}
+  <div class="lcars-empty">No entries in this channel</div>
+{% endfor %}
+
+{% if after_cursor %}
+{% if infinite_scroll %}
+<div class="lcars-load-more lcars-load-more-sentinel"
+     hx-get="{% url 'timeline' channel_uid=channel_uid %}?after={{ after_cursor }}{% if unread_only %}&unread=1{% endif %}"
+     hx-trigger="intersect once root:#main-content"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-indicator="#lcars-loading">
+  <div class="lcars-infinite-indicator">
+    <div class="lcars-scan-line"></div>
+  </div>
+</div>
+{% else %}
+<div class="lcars-load-more">
+  <button class="lcars-button lcars-button-blue"
+          hx-get="{% url 'timeline' channel_uid=channel_uid %}?after={{ after_cursor }}{% if unread_only %}&unread=1{% endif %}"
+          hx-target="closest .lcars-load-more"
+          hx-swap="outerHTML"
+          hx-indicator="#lcars-loading">
+    More Entries
+  </button>
+</div>
+{% endif %}
+{% endif %}
+
+{% if wrap_full %}
+</div>
+{% endif %}

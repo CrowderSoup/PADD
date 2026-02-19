@@ -1,0 +1,21 @@
+<svg 
+  xmlns="http://www.w3.org/2000/svg" 
+  viewBox="0 0 256 256" 
+  role="img" 
+  aria-label="PADD icon"
+  style="
+       --padd-color: #f1c86e;
+       fill: var(--padd-color);
+       stroke: var(--padd-color);
+     ">
+  <!-- Outer LCARS-ish tablet -->
+  <rect x="24" y="52" width="208" height="152" rx="34" ry="34" fill="none" stroke-width="16"/>
+
+  <!-- Content lines -->
+  <rect x="60" y="92"  width="120" height="18" rx="9"/>
+  <rect x="60" y="122" width="140" height="18" rx="9"/>
+  <rect x="60" y="152" width="110" height="18" rx="9"/>
+
+  <!-- Status light/square -->
+  <rect x="184" y="86" width="26" height="26" rx="6"/>
+</svg>

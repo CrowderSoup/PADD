@@ -1,0 +1,106 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PADD{% endblock %}</title>
+  <link rel="icon" href="{% static 'logo.svg' %}">
+  <link rel="manifest" href="{% static 'manifest.json' %}">
+  <meta name="theme-color" content="#f1c86e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PADD">
+  <link rel="apple-touch-icon" href="{% static 'logo.svg' %}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/easymde@2.18.0/dist/easymde.min.css">
+  <link rel="stylesheet" href="{% static 'css/lcars.css' %}">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/easymde@2.18.0/dist/easymde.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <div class="lcars-app">
+    <div class="lcars-loading htmx-indicator" id="lcars-loading">
+      <div class="lcars-scan-line"></div>
+    </div>
+    <header class="lcars-header">
+      <button class="lcars-header-bracket" onclick="var s=document.getElementById('channel-sidebar');if(s)s.classList.toggle('lcars-sidebar-open')" aria-label="Toggle menu">
+        <span class="lcars-menu-bars"><span></span><span></span><span></span></span>
+      </button>
+      <div class="lcars-header-bar">
+        <a href="{% url 'index' %}" class="lcars-header-title">
+          <img src="{% static 'wordmark.svg' %}"/>
+        </a>
+        {% if request.session.user_url %}
+          <div class="lcars-user-menu">
+            <button class="lcars-user-trigger" onclick="this.parentElement.classList.toggle('lcars-user-menu-open')">
+              {% if request.session.user_photo %}
+                <img src="{{ request.session.user_photo }}" alt="" class="lcars-user-avatar">
+              {% else %}
+                <svg class="lcars-user-avatar lcars-user-avatar-default" viewBox="0 0 32 32" fill="none">
+                  <circle cx="16" cy="12" r="6" fill="currentColor"/>
+                  <path d="M4 28c0-6.627 5.373-12 12-12s12 5.373 12 12" fill="currentColor"/>
+                </svg>
+              {% endif %}
+              <span class="lcars-user-name">{{ request.session.user_name|default:request.session.user_url }}</span>
+              <svg class="lcars-user-chevron" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+            </button>
+            <div class="lcars-user-dropdown">
+              {% if is_admin %}<a href="{% url 'admin' %}" class="lcars-user-dropdown-item">Admin</a>{% endif %}
+              <a href="{% url 'settings' %}" class="lcars-user-dropdown-item">Settings</a>
+              <a href="{% url 'logout' %}" class="lcars-user-dropdown-item">Log Out</a>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </header>
+    <div class="lcars-body">
+      {% block sidebar %}{% endblock %}
+      <main class="lcars-main" id="main-content">
+        <div id="broadcast-container" hx-get="{% url 'broadcast-banner' %}" hx-trigger="every 30s" hx-swap="innerHTML">
+          {% include "partials/broadcast_banner.html" %}
+        </div>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+    {% if request.session.micropub_endpoint and not hide_fab %}
+    <a href="{% url 'new-post' %}" class="lcars-fab" aria-label="New Post">
+      <i class="fas fa-plus"></i>
+    </a>
+    {% endif %}
+    <footer class="lcars-footer">
+      <div class="lcars-footer-bracket">Personal Aggregation Display Dashboard</div>
+      <div class="lcars-footer-bar"></div>
+    </footer>
+  </div>
+  <div class="lcars-confirm-overlay lcars-hidden" id="lcars-confirm-overlay" aria-hidden="true">
+    <div class="lcars-confirm-modal" id="lcars-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="lcars-confirm-title" aria-describedby="lcars-confirm-message">
+      <div class="lcars-confirm-accent" aria-hidden="true"></div>
+      <div class="lcars-confirm-body">
+        <h2 class="lcars-confirm-title" id="lcars-confirm-title">Confirm Action</h2>
+        <p class="lcars-confirm-message" id="lcars-confirm-message"></p>
+        <div class="lcars-confirm-actions">
+          <button class="lcars-button lcars-button-blue lcars-confirm-cancel" id="lcars-confirm-cancel" type="button">Cancel</button>
+          <button class="lcars-button lcars-button-orange lcars-confirm-accept" id="lcars-confirm-accept" type="button">Proceed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+  window.PADD_URLS = {
+    channelRename: "{% url 'channel-rename' %}",
+    channelOrder: "{% url 'channel-order' %}",
+  };
+</script>
+<script src="{% static 'js/editor.js' %}"></script>
+<script src="{% static 'js/maps.js' %}"></script>
+<script src="{% static 'js/mark-read.js' %}"></script>
+<script src="{% static 'js/channels.js' %}"></script>
+<script src="{% static 'js/modal.js' %}"></script>
+<script src="{% static 'js/app.js' %}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

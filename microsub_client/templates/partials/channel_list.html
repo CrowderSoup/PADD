@@ -1,0 +1,41 @@
+{% for channel in channels %}
+<div class="lcars-channel-wrapper" draggable="true" data-channel-uid="{{ channel.uid }}">
+  <a href="{% url 'timeline' channel_uid=channel.uid %}"
+     class="lcars-channel-item {% if channel.uid == channel_uid %}lcars-channel-active{% endif %}"
+     hx-get="{% url 'timeline' channel_uid=channel.uid %}"
+     hx-target="#main-content"
+     hx-swap="innerHTML"
+     hx-push-url="true"
+     hx-indicator="#lcars-loading">
+    <span class="lcars-channel-name">{{ channel.name }}</span>
+    {% if channel.unread and channel.unread != True %}
+      <span class="lcars-badge">{{ channel.unread }}</span>
+    {% elif channel.unread %}
+      <span class="lcars-badge">Unread</span>
+    {% endif %}
+  </a>
+  <div class="lcars-channel-actions">
+    <button class="lcars-channel-action-btn" onclick="this.parentElement.classList.toggle('lcars-actions-open')" title="Channel actions" type="button">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="11" cy="7" r="1.2"/></svg>
+    </button>
+    <div class="lcars-channel-action-menu">
+      <button class="lcars-channel-menu-item" onclick="startChannelRename(this, '{{ channel.uid }}', '{{ channel.name|escapejs }}')" type="button">Rename</button>
+      <button class="lcars-channel-menu-item"
+              hx-post="{% url 'channel-delete' %}"
+              hx-vals='{"channel": "{{ channel.uid }}"}'
+              hx-target="#channel-nav"
+              hx-swap="innerHTML"
+              hx-confirm="Delete channel '{{ channel.name }}'?"
+              type="button">Delete</button>
+      <button class="lcars-channel-menu-item"
+              hx-get="{% url 'feed-list' channel_uid=channel.uid %}"
+              hx-target="#feed-panel"
+              hx-swap="innerHTML"
+              onclick="document.getElementById('feed-panel').classList.add('lcars-feed-panel-open'); this.closest('.lcars-channel-actions').classList.remove('lcars-actions-open')"
+              type="button">Manage Feeds</button>
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="lcars-empty">No channels found</div>
+{% endfor %}

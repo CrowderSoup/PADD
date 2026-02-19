@@ -1,0 +1,11 @@
+{% if entries|length == 1 %}<span class="lcars-read-status lcars-read">Read</span>{% endif %}
+{% for entry_id in entries %}{% if entries|length > 1 %}
+<div id="read-status-{{ forloop.counter0 }}" hx-swap-oob="innerHTML:[data-entry-read='{{ entry_id }}']">
+  <span class="lcars-read-status lcars-read">Read</span>
+</div>
+{% endif %}{% endfor %}
+{% if channels %}
+<nav id="channel-nav" hx-swap-oob="innerHTML:#channel-nav">
+{% include "partials/channel_list.html" %}
+</nav>
+{% endif %}

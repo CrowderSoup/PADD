@@ -1,0 +1,17 @@
+{
+  "name": "PADD",
+  "short_name": "PADD",
+  "description": "Personal Aggregation Display Dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#f1c86e",
+  "icons": [
+    {
+      "src": "/static/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

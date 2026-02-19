@@ -1,0 +1,57 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — PADD</title>
+  <link rel="manifest" href="{% static 'manifest.json' %}">
+  <meta name="theme-color" content="#f1c86e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PADD">
+  <link rel="apple-touch-icon" href="{% static 'logo.svg' %}">
+  <link rel="stylesheet" href="{% static 'css/lcars.css' %}">
+</head>
+<body>
+  <div class="lcars-app">
+    <header class="lcars-header">
+      <div class="lcars-header-bracket"></div>
+      <div class="lcars-header-bar">
+        <span class="lcars-header-title">
+          <img src="{% static 'wordmark.svg' %}" alt="PADD">
+        </span>
+      </div>
+    </header>
+    <div class="lcars-login-container">
+      <div class="lcars-login-shell">
+        <a href="{% url 'landing' %}" class="lcars-button lcars-button-muted lcars-login-back">Back</a>
+        <div class="lcars-login-box">
+          <h1 class="lcars-login-title">Identify</h1>
+          <p class="lcars-login-subtitle">Enter your domain to authenticate via IndieAuth</p>
+          {% if error %}
+            <div class="lcars-error">{{ error }}</div>
+          {% endif %}
+          <form method="post" action="{% url 'login' %}">
+            {% csrf_token %}
+            <div class="lcars-form-group">
+              <label for="url" class="lcars-label">Your Domain</label>
+              <input type="url" id="url" name="url" class="lcars-input"
+                     placeholder="https://example.com" required autofocus>
+            </div>
+            <button type="submit" class="lcars-button lcars-button-orange">Engage</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <footer class="lcars-footer">
+      <div class="lcars-footer-bracket">Personal Aggregation Display Dashboard</div>
+      <div class="lcars-footer-bar"></div>
+    </footer>
+  </div>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

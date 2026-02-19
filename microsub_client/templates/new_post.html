@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New Post — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Compose</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list">
+    <a href="{% url 'index' %}" class="lcars-channel-item">
+      <span class="lcars-channel-name"><i class="fas fa-arrow-left"></i> Back to Timeline</span>
+    </a>
+  </nav>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-new-post">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">New Post</h2>
+  </div>
+
+  {% if success %}
+  <div class="lcars-new-post-success">
+    <div class="lcars-new-post-success-icon"><i class="fas fa-check-circle"></i></div>
+    <p>Post published successfully!</p>
+    {% if result_url %}
+      <a href="{{ result_url }}" class="lcars-button lcars-button-blue" target="_blank" rel="noopener">View Post</a>
+    {% endif %}
+    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange">Write Another</a>
+  </div>
+  {% else %}
+
+  {% if error %}
+  <div class="lcars-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" class="lcars-new-post-form" id="new-post-form">
+    {% csrf_token %}
+
+    <div class="lcars-form-group">
+      <label class="lcars-label" for="post-name">Title (optional)</label>
+      <input type="text" name="name" id="post-name" class="lcars-input"
+             placeholder="Leave blank for a note, add a title for an article">
+    </div>
+
+    <div class="lcars-form-group">
+      <label class="lcars-label" for="post-content">Content</label>
+      <textarea name="content" id="post-content" class="lcars-reply-input" rows="10"
+                placeholder="Write your post in Markdown..."></textarea>
+    </div>
+
+    <div class="lcars-form-group">
+      <label class="lcars-label" for="post-tags">Tags (comma-separated)</label>
+      <input type="text" name="tags" id="post-tags" class="lcars-input"
+             placeholder="e.g. indieweb, web, personal">
+    </div>
+
+    {% if has_media_endpoint %}
+    <div class="lcars-form-group">
+      <label class="lcars-label">Photos</label>
+      <div class="lcars-media-upload">
+        <div class="lcars-media-thumbnails" id="media-thumbnails"></div>
+        <label class="lcars-media-add-btn">
+          <i class="fas fa-plus"></i> Add Photo
+          <input type="file" accept="image/*" id="media-file-input" class="lcars-hidden" data-upload-url="{% url 'micropub-media' %}">
+        </label>
+        <div class="lcars-media-uploading lcars-hidden" id="media-uploading">
+          <div class="lcars-scan-line"></div>
+          Uploading...
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="lcars-form-group">
+      <label class="lcars-label">
+        <input type="checkbox" id="location-toggle"> Include Location
+      </label>
+      <div class="lcars-location-display lcars-hidden" id="location-display">
+        <span id="location-coords"></span>
+        <div class="lcars-location-map" id="location-map"></div>
+        <input type="hidden" name="location" id="location-input">
+      </div>
+    </div>
+
+    <div class="lcars-new-post-actions">
+      <button type="submit" class="lcars-button lcars-button-orange">Publish</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/new-post.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% if feeds %}
+<div class="lcars-feed-items">
+  <div class="lcars-sidebar-label" style="margin-bottom: 8px;">Followed Feeds</div>
+  {% for feed in feeds %}
+  <div class="lcars-feed-item">
+    <div class="lcars-feed-item-info">
+      <span class="lcars-feed-item-url">{{ feed.url }}</span>
+    </div>
+    <button class="lcars-entry-remove-btn"
+            hx-post="{% url 'feed-unfollow' %}"
+            hx-vals='{"channel": "{{ channel_uid }}", "url": "{{ feed.url }}"}'
+            hx-target="#feed-current-list"
+            hx-swap="innerHTML"
+            hx-confirm="Unfollow this feed?"
+            title="Unfollow"
+            type="button">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+    </button>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="lcars-empty">No feeds followed in this channel</div>
+{% endif %}

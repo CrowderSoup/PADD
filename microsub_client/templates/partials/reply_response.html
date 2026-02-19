@@ -1,0 +1,15 @@
+<div class="lcars-reply-response">
+  <div data-reply-button>
+    {% include "partials/interaction_buttons.html" with kind="reply" active=True entry_url=entry_url reply_url=reply_url %}
+  </div>
+  <div data-reply-sent>
+    <div class="lcars-reply-sent">
+      <p class="lcars-reply-sent-text">{{ reply_content }}</p>
+      {% if reply_url %}
+        <a href="{{ reply_url }}" class="lcars-reply-sent-link" target="_blank" rel="noopener">View on your site</a>
+      {% else %}
+        <span class="lcars-reply-sent-nolink">Sent (no URL returned by server)</span>
+      {% endif %}
+    </div>
+  </div>
+</div>

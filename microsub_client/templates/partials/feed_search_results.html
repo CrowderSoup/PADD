@@ -1,0 +1,28 @@
+{% if results %}
+<div class="lcars-feed-results">
+  {% for result in results %}
+  <div class="lcars-feed-result-item">
+    <div class="lcars-feed-result-info">
+      <span class="lcars-feed-result-type">{{ result.type|default:"feed" }}</span>
+      <span class="lcars-feed-result-url">{{ result.url }}</span>
+    </div>
+    <div class="lcars-feed-result-actions">
+      <button class="lcars-interaction-btn"
+              hx-get="{% url 'feed-preview' %}?url={{ result.url|urlencode }}"
+              hx-target="#feed-preview-area"
+              hx-swap="innerHTML"
+              type="button">Preview</button>
+      <button class="lcars-interaction-btn lcars-like-btn"
+              hx-post="{% url 'feed-follow' %}"
+              hx-vals='{"channel": "{{ channel_uid }}", "url": "{{ result.url }}"}'
+              hx-target="#feed-current-list"
+              hx-swap="innerHTML"
+              type="button">Follow</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<div id="feed-preview-area"></div>
+{% else %}
+<div class="lcars-empty">No results found</div>
+{% endif %}
