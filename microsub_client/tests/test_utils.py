@@ -76,6 +76,20 @@ class GetEntryTypeTests(TestCase):
         }
         self.assertEqual(get_entry_type(entry), "note")
 
+    def test_article_with_string_content(self):
+        entry = {
+            "name": "My Long Article Title",
+            "content": "Some body text that is different",
+        }
+        self.assertEqual(get_entry_type(entry), "article")
+
+    def test_note_with_string_content_matching_name(self):
+        entry = {
+            "name": "Short note text",
+            "content": "Short note text",
+        }
+        self.assertEqual(get_entry_type(entry), "note")
+
     def test_note_default(self):
         self.assertEqual(get_entry_type({"content": {"text": "Just a note"}}), "note")
 

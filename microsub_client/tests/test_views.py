@@ -946,6 +946,21 @@ class TimelineViewTests(TestCase):
         response = self.client.get("/channel/home/")
         self.assertEqual(response.context["mark_read_behavior"], "scroll_past")
 
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{"_id": "47444000", "name": "Turtle wall", "photo": ["https://example.com/photo.jpg"]}],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_htmx_channel_switch_handles_entry_missing_url(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/", HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Turtle wall")
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):

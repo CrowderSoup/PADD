@@ -30,6 +30,14 @@ def sanitize_content(html):
 
 
 def get_entry_type(entry):
+    content = entry.get("content")
+    if isinstance(content, dict):
+        content_text = content.get("text", "")
+    elif isinstance(content, str):
+        content_text = content
+    else:
+        content_text = ""
+
     if entry.get("like-of"):
         return "like"
     if entry.get("repost-of"):
@@ -42,7 +50,7 @@ def get_entry_type(entry):
         return "checkin"
     if entry.get("photo"):
         return "photo"
-    if entry.get("name") and entry.get("name") != entry.get("content", {}).get("text", "")[:100]:
+    if entry.get("name") and entry.get("name") != content_text[:100]:
         return "article"
     return "note"
 

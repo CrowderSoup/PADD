@@ -324,6 +324,8 @@ def _enrich_entries(entries, request):
     user_url = request.session.get("user_url", "")
 
     for entry in entries:
+        # Templates may reference entry.url in filter arguments; ensure key exists.
+        entry.setdefault("url", "")
         entry["display_type"] = get_entry_type(entry)
         for key in ("like-of", "repost-of", "in-reply-to", "bookmark-of"):
             if key in entry:
