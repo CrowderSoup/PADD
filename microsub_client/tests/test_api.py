@@ -140,6 +140,46 @@ class MarkUnreadTests(TestCase):
         self.assertEqual(data["entry[]"], "entry1")
 
 
+class MarkChannelReadTests(TestCase):
+    @patch("microsub_client.api.mark_read")
+    @patch("microsub_client.api.get_timeline")
+    def test_marks_unread_entries_until_empty(self, mock_timeline, mock_mark_read):
+        mock_timeline.side_effect = [
+            {"items": [{"_id": "e1"}, {"_id": "e2"}]},
+            {"items": [{"_id": "e3"}]},
+            {"items": []},
+        ]
+        result = api.mark_channel_read("https://api.example/", "token", "ch1")
+        self.assertEqual(result, {"marked": 3})
+        self.assertEqual(mock_mark_read.call_count, 2)
+        mock_mark_read.assert_any_call("https://api.example/", "token", "ch1", ["e1", "e2"])
+        mock_mark_read.assert_any_call("https://api.example/", "token", "ch1", ["e3"])
+
+    @patch("microsub_client.api.mark_read")
+    @patch("microsub_client.api.get_timeline")
+    def test_raises_when_unread_entries_do_not_change(self, mock_timeline, mock_mark_read):
+        mock_timeline.side_effect = [
+            {"items": [{"_id": "e1"}]},
+            {"items": [{"_id": "e1"}]},
+        ]
+        with self.assertRaises(api.MicrosubError):
+            api.mark_channel_read("https://api.example/", "token", "ch1")
+        mock_mark_read.assert_called_once_with("https://api.example/", "token", "ch1", ["e1"])
+
+    @patch("microsub_client.api.mark_read")
+    @patch("microsub_client.api.get_timeline")
+    def test_falls_back_to_url_when_id_missing(self, mock_timeline, mock_mark_read):
+        mock_timeline.side_effect = [
+            {"items": [{"url": "https://post.example/1"}]},
+            {"items": []},
+        ]
+        result = api.mark_channel_read("https://api.example/", "token", "ch1")
+        self.assertEqual(result, {"marked": 1})
+        mock_mark_read.assert_called_once_with(
+            "https://api.example/", "token", "ch1", ["https://post.example/1"]
+        )
+
+
 class RemoveEntryTests(TestCase):
     @patch("microsub_client.api._request")
     def test_sends_correct_data(self, mock_req):

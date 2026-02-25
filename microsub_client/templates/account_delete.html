@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Account — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Account</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list">
+    <a href="{% url 'settings' %}" class="lcars-channel-item">
+      <span class="lcars-channel-name"><i class="fas fa-arrow-left"></i> Back to Settings</span>
+    </a>
+  </nav>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-settings">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">Delete Account</h2>
+  </div>
+
+  {% if error %}
+  <div class="lcars-error">{{ error }}</div>
+  {% endif %}
+
+  <div class="lcars-settings-section">
+    <div class="lcars-settings-label">Warning</div>
+    <p class="lcars-settings-hint">This will permanently delete all PADD data associated with your account. This action cannot be undone.</p>
+    <ul class="lcars-settings-hint">
+      <li>Your preferences and settings</li>
+      <li>All saved drafts</li>
+      <li>All interaction records (likes, reposts, replies)</li>
+    </ul>
+  </div>
+
+  <form method="post" class="lcars-opml-form">
+    {% csrf_token %}
+    <div class="lcars-settings-section">
+      <div class="lcars-settings-label">Confirm Deletion</div>
+      <p class="lcars-settings-hint">To confirm, type your URL: <strong>{{ user_url }}</strong></p>
+      <input type="text" name="confirm_url" class="lcars-input" placeholder="{{ user_url }}" autocomplete="off">
+    </div>
+
+    <div class="lcars-new-post-actions">
+      <button type="submit" class="lcars-button lcars-button-orange">Delete My Data</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

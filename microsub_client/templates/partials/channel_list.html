@@ -19,6 +19,13 @@
       <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="11" cy="7" r="1.2"/></svg>
     </button>
     <div class="lcars-channel-action-menu">
+      <button class="lcars-channel-menu-item"
+              hx-post="{% url 'channel-mark-read' %}"
+              hx-vals='{"channel": "{{ channel.uid }}"}'
+              hx-target="#channel-nav"
+              hx-swap="innerHTML"
+              hx-confirm="Mark all items in '{{ channel.name }}' as read?"
+              type="button">Mark as read</button>
       <button class="lcars-channel-menu-item" onclick="startChannelRename(this, '{{ channel.uid }}', '{{ channel.name|escapejs }}')" type="button">Rename</button>
       <button class="lcars-channel-menu-item"
               hx-post="{% url 'channel-delete' %}"

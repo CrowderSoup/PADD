@@ -1,7 +1,8 @@
 /**
  * Channel management: inline rename and drag-to-reorder.
  *
- * Requires window.PADD_URLS.channelRename and window.PADD_URLS.channelOrder
+ * Requires window.PADD_URLS.channelMarkRead, window.PADD_URLS.channelRename,
+ * and window.PADD_URLS.channelOrder
  * to be set before this script runs (injected by the base template).
  */
 
@@ -49,6 +50,20 @@ function startChannelRename(btn, uid, currentName) {
   });
   input.addEventListener('blur', submitRename);
 }
+
+// Refresh visible timeline after successful "Mark as read" channel action.
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  var timeline = document.getElementById('timeline');
+  if (!timeline) return;
+  if (!window.PADD_URLS || evt.detail.pathInfo.requestPath !== window.PADD_URLS.channelMarkRead) return;
+  if (!evt.detail.successful) return;
+
+  htmx.ajax('GET', window.location.pathname + window.location.search, {
+    target: '#main-content',
+    swap: 'innerHTML',
+    pushURL: false,
+  });
+});
 
 // Drag-to-reorder channels
 (function() {

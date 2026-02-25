@@ -4,3 +4,8 @@ staticfiles/
 .env
 __pycache__
 .git
+.claude
+trust-caddy-cert.sh
+Caddyfile.dev
+docker-compose*.yml
+README.md

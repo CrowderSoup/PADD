@@ -1,6 +1,6 @@
 <form class="lcars-reply-form lcars-hidden"
       hx-post="{% url 'micropub-reply' %}"
-      hx-vals='{"entry_url": "{{ entry_url }}"}'
+      hx-vals='{"entry_url": "{{ entry_url|escapejs }}"}'
       hx-swap="none"
       hx-on::config-request="if(this._easymde){event.detail.parameters.content=this._easymde.value()}"
       hx-on::before-request="if(!event.detail.requestConfig.parameters.content||!event.detail.requestConfig.parameters.content.trim()){event.preventDefault();this.classList.add('lcars-reply-error');return}"

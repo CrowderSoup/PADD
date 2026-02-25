@@ -65,14 +65,15 @@ def format_datetime(iso_str):
         now = datetime.now(timezone.utc)
         diff = now - dt
 
-        if diff.days == 0:
-            hours = diff.seconds // 3600
-            if hours == 0:
-                minutes = diff.seconds // 60
-                if minutes == 0:
-                    return "just now"
-                return f"{minutes}m ago"
-            return f"{hours}h ago"
+        total = diff.total_seconds()
+        if total < 0:
+            return dt.strftime("%b %d, %Y")
+        if total < 60:
+            return "just now"
+        if total < 3600:
+            return f"{int(total // 60)}m ago"
+        if total < 86400:
+            return f"{int(total // 3600)}h ago"
         if diff.days == 1:
             return "yesterday"
         if diff.days < 7:

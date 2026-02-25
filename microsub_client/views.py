@@ -1,4 +1,10 @@
+import datetime
+import json
 import secrets
+import xml.etree.ElementTree as ET
+
+import defusedxml.ElementTree as SafeET
+from defusedxml.common import DefusedXmlException
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -8,7 +14,7 @@ from pathlib import Path
 
 from django.conf import settings
 
-from . import api, micropub
+from . import api, image_utils, micropub
 from .auth import (
     build_authorization_url,
     discover_endpoints,
@@ -17,9 +23,9 @@ from .auth import (
     generate_pkce_pair,
 )
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Max, Q
 
-from .models import Broadcast, CachedEntry, DismissedBroadcast, Interaction, KnownUser, UserSettings
+from .models import Broadcast, CachedEntry, DismissedBroadcast, Draft, Interaction, KnownUser, UserSettings
 from .utils import get_entry_type, sanitize_content, format_datetime
 
 
@@ -32,7 +38,10 @@ def offline_view(request):
 
 def service_worker_view(request):
     sw_path = Path(__file__).resolve().parent / "static" / "sw.js"
-    return HttpResponse(sw_path.read_text(), content_type="application/javascript")
+    try:
+        return HttpResponse(sw_path.read_text(), content_type="application/javascript")
+    except FileNotFoundError:
+        return HttpResponse(status=404)
 
 
 # --- Auth Views ---
@@ -169,16 +178,21 @@ def logout_view(request):
 def settings_view(request):
     if not request.session.get("access_token"):
         return redirect("login")
+    if not request.session.get("user_url"):
+        return redirect("login")
 
     user_settings = _get_user_settings(request)
 
     if request.method == "POST":
-        user_settings.default_filter = request.POST.get("default_filter", "all")
-        user_settings.mark_read_behavior = request.POST.get(
-            "mark_read_behavior", UserSettings.MarkReadBehavior.EXPLICIT
-        )
+        _valid_filters = {"all", "unread"}
+        _valid_mrb = set(UserSettings.MarkReadBehavior.values)
+        df = request.POST.get("default_filter", "all")
+        user_settings.default_filter = df if df in _valid_filters else "all"
+        mrb = request.POST.get("mark_read_behavior", UserSettings.MarkReadBehavior.EXPLICIT)
+        user_settings.mark_read_behavior = mrb if mrb in _valid_mrb else UserSettings.MarkReadBehavior.EXPLICIT
         user_settings.expand_content = request.POST.get("expand_content") == "on"
         user_settings.infinite_scroll = request.POST.get("infinite_scroll") == "on"
+        user_settings.show_gardn_harvest = request.POST.get("show_gardn_harvest") == "on"
         user_settings.save()
         if request.htmx:
             return render(request, "partials/settings_form.html", {
@@ -186,11 +200,14 @@ def settings_view(request):
                 "mark_read_behavior": user_settings.mark_read_behavior,
                 "expand_content": user_settings.expand_content,
                 "infinite_scroll": user_settings.infinite_scroll,
+                "show_gardn_harvest": user_settings.show_gardn_harvest,
             })
         return redirect("settings")
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token:
+        return redirect("login")
     try:
         channels = api.get_channels(endpoint, token)
     except api.MicrosubError:
@@ -201,13 +218,18 @@ def settings_view(request):
         "mark_read_behavior": user_settings.mark_read_behavior,
         "expand_content": user_settings.expand_content,
         "infinite_scroll": user_settings.infinite_scroll,
+        "show_gardn_harvest": user_settings.show_gardn_harvest,
         "channels": channels,
     })
 
 
 def _get_user_settings(request):
+    user_url = request.session.get("user_url")
+    if not user_url:
+        raise ValueError("Missing user_url in session")
+
     settings_obj, _ = UserSettings.objects.get_or_create(
-        user_url=request.session["user_url"]
+        user_url=user_url
     )
     return settings_obj
 
@@ -216,8 +238,10 @@ def _get_user_settings(request):
 
 
 def index_view(request):
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token:
+        return redirect("login")
 
     try:
         channels = api.get_channels(endpoint, token)
@@ -329,7 +353,13 @@ def _enrich_entries(entries, request):
         entry["display_type"] = get_entry_type(entry)
         for key in ("like-of", "repost-of", "in-reply-to", "bookmark-of"):
             if key in entry:
-                entry[key.replace("-", "_")] = entry[key]
+                val = entry[key]
+                if isinstance(val, list):
+                    val = val[0] if val else ""
+                underscore_key = key.replace("-", "_")
+                entry[underscore_key] = val
+                if isinstance(val, dict):
+                    entry[underscore_key + "_context"] = val
         if "_id" in entry:
             entry["entry_id"] = entry["_id"]
         if "_is_read" in entry:
@@ -365,8 +395,10 @@ def _enrich_entries(entries, request):
 
 
 def timeline_view(request, channel_uid):
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token or not request.session.get("user_url"):
+        return redirect("login")
 
     user_settings = _get_user_settings(request)
 
@@ -407,6 +439,7 @@ def timeline_view(request, channel_uid):
         "expand_content": user_settings.expand_content,
         "mark_read_behavior": user_settings.mark_read_behavior,
         "infinite_scroll": user_settings.infinite_scroll,
+        "show_gardn_harvest": user_settings.show_gardn_harvest,
     }
 
     # HTMX partial for "load more"
@@ -509,6 +542,65 @@ def remove_entry_view(request):
     return HttpResponse("")
 
 
+def mute_user_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    author_url = request.POST.get("author_url")
+    channel = request.POST.get("channel") or None
+
+    if not author_url:
+        return HttpResponse(status=400)
+
+    try:
+        api.mute_user(endpoint, token, author_url, channel=channel)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return HttpResponse(status=204)
+
+
+def unmute_user_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    author_url = request.POST.get("author_url")
+    channel = request.POST.get("channel") or None
+
+    if not author_url:
+        return HttpResponse(status=400)
+
+    try:
+        api.unmute_user(endpoint, token, author_url, channel=channel)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return HttpResponse(status=204)
+
+
+def block_user_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    author_url = request.POST.get("author_url")
+
+    if not author_url:
+        return HttpResponse(status=400)
+
+    try:
+        api.block_user(endpoint, token, author_url)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return HttpResponse(status=204)
+
+
 # --- Channel Management Views ---
 
 
@@ -525,6 +617,28 @@ def channel_create_view(request):
 
     try:
         api.create_channel(endpoint, token, name)
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    return render(request, "partials/channel_list.html", {
+        "channels": channels,
+    })
+
+
+def channel_mark_read_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    endpoint = request.session["microsub_endpoint"]
+    token = request.session["access_token"]
+    channel_uid = request.POST.get("channel")
+
+    if not channel_uid:
+        return HttpResponse(status=400)
+
+    try:
+        api.mark_channel_read(endpoint, token, channel_uid)
         channels = api.get_channels(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -722,24 +836,43 @@ def new_post_view(request):
     if not mp_endpoint:
         return HttpResponse("Micropub not available", status=400)
 
-    token = request.session["access_token"]
+    token = request.session.get("access_token")
+    if not token:
+        return HttpResponse("Not authenticated", status=400)
+
+    user_url = request.session.get("user_url", "")
 
     has_media_endpoint = False
     syndicate_to = []
     try:
         config = micropub.query_config(mp_endpoint, token)
-        has_media_endpoint = bool(config.get("media-endpoint"))
+        media_endpoint_url = config.get("media-endpoint", "")
+        has_media_endpoint = bool(media_endpoint_url)
         syndicate_to = config.get("syndicate-to", [])
+        # Cache the endpoint URL so upload_media_view can skip this query.
+        if media_endpoint_url:
+            request.session["media_endpoint_url"] = media_endpoint_url
     except micropub.MicropubError:
         pass
+
+    drafts = Draft.objects.filter(user_url=user_url).order_by("-updated_at") if user_url else []
 
     if request.method == "POST":
         content = request.POST.get("content", "").strip()
         if not content:
+            draft_id_str = request.POST.get("draft_id", "")
+            draft = None
+            if draft_id_str:
+                try:
+                    draft = Draft.objects.get(pk=int(draft_id_str), user_url=user_url)
+                except (Draft.DoesNotExist, ValueError):
+                    pass
             return render(request, "new_post.html", {
                 "error": "Content is required.",
                 "has_media_endpoint": has_media_endpoint,
                 "syndicate_to": syndicate_to,
+                "drafts": drafts,
+                "draft": draft,
                 "hide_fab": True,
             })
 
@@ -749,33 +882,186 @@ def new_post_view(request):
         photos = request.POST.getlist("photo")
         photo = [p for p in photos if p] or None
         location = request.POST.get("location", "").strip() or None
+        syndicate_targets = request.POST.getlist("syndicate_to") or None
 
         try:
             result_url = micropub.create_post(
                 mp_endpoint, token, content,
                 name=name, category=category, photo=photo, location=location,
+                syndicate_to=syndicate_targets,
             )
         except micropub.MicropubError as exc:
+            draft_id_str = request.POST.get("draft_id", "")
+            draft = None
+            if draft_id_str:
+                try:
+                    draft = Draft.objects.get(pk=int(draft_id_str), user_url=user_url)
+                except (Draft.DoesNotExist, ValueError):
+                    pass
             return render(request, "new_post.html", {
                 "error": f"Failed to publish: {exc}",
                 "has_media_endpoint": has_media_endpoint,
                 "syndicate_to": syndicate_to,
+                "drafts": drafts,
+                "draft": draft,
                 "hide_fab": True,
             })
+
+        # Delete the draft that was published
+        draft_id_str = request.POST.get("draft_id", "")
+        if draft_id_str and user_url:
+            try:
+                Draft.objects.filter(pk=int(draft_id_str), user_url=user_url).delete()
+            except ValueError:
+                pass
 
         return render(request, "new_post.html", {
             "success": True,
             "result_url": result_url,
             "has_media_endpoint": has_media_endpoint,
             "syndicate_to": syndicate_to,
+            "drafts": Draft.objects.filter(user_url=user_url).order_by("-updated_at") if user_url else [],
             "hide_fab": True,
         })
+
+    # Load a specific draft if ?draft=<id> is provided
+    draft = None
+    draft_id_str = request.GET.get("draft", "")
+    if draft_id_str and user_url:
+        try:
+            draft = Draft.objects.get(pk=int(draft_id_str), user_url=user_url)
+        except (Draft.DoesNotExist, ValueError):
+            pass
 
     return render(request, "new_post.html", {
         "has_media_endpoint": has_media_endpoint,
         "syndicate_to": syndicate_to,
+        "drafts": drafts,
+        "draft": draft,
         "hide_fab": True,
     })
+
+
+def draft_save_view(request):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    user_url = request.session.get("user_url", "")
+    if not user_url:
+        return HttpResponse(status=403)
+
+    draft_id_str = request.POST.get("draft_id", "")
+    title = request.POST.get("name", "").strip()
+    content = request.POST.get("content", "").strip()
+    tags = request.POST.get("tags", "").strip()
+    photos_raw = request.POST.get("photos_json", "")
+    location = request.POST.get("location", "").strip()
+
+    # Collect photos from photo[] form fields
+    photos = request.POST.getlist("photo")
+    photos = [p for p in photos if p]
+    if not photos and photos_raw:
+        import json as _json
+        try:
+            photos = _json.loads(photos_raw)
+        except (ValueError, TypeError):
+            photos = []
+
+    draft = None
+    if draft_id_str:
+        try:
+            draft = Draft.objects.get(pk=int(draft_id_str), user_url=user_url)
+        except (Draft.DoesNotExist, ValueError):
+            draft = None
+
+    if draft:
+        draft.title = title
+        draft.content = content
+        draft.tags = tags
+        draft.photos = photos
+        draft.location = location
+        draft.save()
+    else:
+        draft = Draft.objects.create(
+            user_url=user_url,
+            title=title,
+            content=content,
+            tags=tags,
+            photos=photos,
+            location=location,
+        )
+
+    drafts = Draft.objects.filter(user_url=user_url).order_by("-updated_at")
+    response = render(request, "partials/draft_sidebar.html", {
+        "drafts": drafts,
+        "current_draft_id": draft.pk,
+    })
+    # Append OOB swap to update the hidden draft_id input
+    oob_html = f'<input type="hidden" name="draft_id" id="draft-id" value="{draft.pk}" hx-swap-oob="true">'
+    response.content = response.content + oob_html.encode()
+    return response
+
+
+def draft_delete_view(request, draft_id):
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    user_url = request.session.get("user_url", "")
+    if not user_url:
+        return HttpResponse(status=403)
+
+    # Determine which draft is currently loaded in the form (if any)
+    current_draft_id_str = request.POST.get("draft_id", "")
+    try:
+        current_draft_id = int(current_draft_id_str)
+    except (ValueError, TypeError):
+        current_draft_id = None
+
+    Draft.objects.filter(pk=draft_id, user_url=user_url).delete()
+
+    drafts = Draft.objects.filter(user_url=user_url).order_by("-updated_at")
+
+    # Only clear the form's draft_id when the deleted draft was the active one.
+    # If a different draft was deleted, preserve the current ID so subsequent
+    # saves continue updating the right record.
+    if current_draft_id == draft_id:
+        sidebar_current_id = None
+        oob_value = ""
+    else:
+        sidebar_current_id = current_draft_id
+        oob_value = str(current_draft_id) if current_draft_id else ""
+
+    response = render(request, "partials/draft_sidebar.html", {
+        "drafts": drafts,
+        "current_draft_id": sidebar_current_id,
+    })
+    oob_html = f'<input type="hidden" name="draft_id" id="draft-id" value="{oob_value}" hx-swap-oob="true">'
+    response.content = response.content + oob_html.encode()
+    return response
+
+
+def convert_image_view(request):
+    """Convert an image to a web-native JPEG and return the bytes directly.
+
+    The client sends a non-web-native file (HEIC, TIFF, …), receives a JPEG,
+    and can open the result in the browser-side photo editor without ever
+    persisting anything.
+    """
+    if request.method != "POST":
+        return HttpResponse(status=405)
+    if not request.session.get("access_token"):
+        return JsonResponse({"error": "Not authenticated"}, status=403)
+
+    uploaded_file = request.FILES.get("file")
+    if not uploaded_file:
+        return JsonResponse({"error": "No file provided"}, status=400)
+
+    try:
+        converted = image_utils.maybe_convert(uploaded_file)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+
+    return HttpResponse(converted.read(), content_type=getattr(converted, "content_type", "image/jpeg"))
 
 
 def upload_media_view(request):
@@ -786,17 +1072,33 @@ def upload_media_view(request):
     if not mp_endpoint:
         return JsonResponse({"error": "Micropub not available"}, status=400)
 
-    token = request.session["access_token"]
+    token = request.session.get("access_token")
+    if not token:
+        return JsonResponse({"error": "Not authenticated"}, status=400)
 
     uploaded_file = request.FILES.get("file")
     if not uploaded_file:
         return JsonResponse({"error": "No file provided"}, status=400)
 
     try:
-        config = micropub.query_config(mp_endpoint, token)
-        media_endpoint = config.get("media-endpoint")
-        if not media_endpoint:
-            return JsonResponse({"error": "No media endpoint available"}, status=400)
+        uploaded_file = image_utils.maybe_convert(uploaded_file)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+
+    # Use the endpoint URL cached by new_post_view; fall back to a live query
+    # if the session doesn't have it (e.g. direct API call without page load).
+    media_endpoint = request.session.get("media_endpoint_url")
+    if not media_endpoint:
+        try:
+            config = micropub.query_config(mp_endpoint, token)
+            media_endpoint = config.get("media-endpoint")
+            if not media_endpoint:
+                return JsonResponse({"error": "No media endpoint available"}, status=400)
+            request.session["media_endpoint_url"] = media_endpoint
+        except micropub.MicropubError as exc:
+            return JsonResponse({"error": str(exc)}, status=502)
+
+    try:
         url = micropub.upload_media(media_endpoint, token, uploaded_file)
     except micropub.MicropubError as exc:
         return JsonResponse({"error": str(exc)}, status=502)
@@ -897,6 +1199,235 @@ def micropub_reply_view(request):
     })
 
 
+# --- OPML Views ---
+
+
+def opml_export_view(request):
+    if not request.session.get("access_token"):
+        return redirect("login")
+
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token:
+        return redirect("login")
+
+    try:
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        channels = []
+
+    root = ET.Element("opml", version="2.0")
+    head = ET.SubElement(root, "head")
+    ET.SubElement(head, "title").text = "PADD Subscriptions"
+    body = ET.SubElement(root, "body")
+
+    for channel in channels:
+        channel_name = channel.get("name", channel.get("uid", ""))
+        folder = ET.SubElement(body, "outline", text=channel_name, title=channel_name)
+        try:
+            result = api.get_follows(endpoint, token, channel.get("uid", ""))
+            feeds = result.get("items", [])
+        except api.MicrosubError:
+            feeds = []
+        for feed in feeds:
+            feed_url = feed.get("url", "")
+            feed_name = feed.get("name", feed_url)
+            if feed_url:
+                ET.SubElement(folder, "outline",
+                               type="rss",
+                               text=feed_name,
+                               title=feed_name,
+                               xmlUrl=feed_url)
+
+    xml_bytes = ET.tostring(root, encoding="unicode", xml_declaration=False)
+    xml_output = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_bytes
+    response = HttpResponse(xml_output, content_type="application/xml; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="padd-subscriptions.opml"'
+    return response
+
+
+def opml_import_view(request):
+    if not request.session.get("access_token"):
+        return redirect("login")
+
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token:
+        return redirect("login")
+
+    try:
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        channels = []
+
+    if request.method == "GET":
+        return render(request, "opml_import.html", {"channels": channels})
+
+    uploaded_file = request.FILES.get("opml_file")
+    if not uploaded_file:
+        return render(request, "opml_import.html", {
+            "channels": channels,
+            "error": "No file uploaded.",
+        })
+
+    fallback_channel = request.POST.get("fallback_channel", "")
+    valid_channel_uids = {ch.get("uid", "") for ch in channels if ch.get("uid")}
+
+    try:
+        tree = SafeET.parse(uploaded_file)
+    except (ET.ParseError, DefusedXmlException) as exc:
+        return render(request, "opml_import.html", {
+            "channels": channels,
+            "error": f"Could not parse OPML file: {exc}",
+        })
+
+    existing_channel_names = {ch.get("name", "").lower(): ch.get("uid") for ch in channels}
+    results = []
+
+    body = tree.find("body")
+    if body is None:
+        return render(request, "opml_import.html", {
+            "channels": channels,
+            "error": "OPML file has no <body> element.",
+        })
+
+    for child in body:
+        child_type = child.get("type", "")
+        xml_url = child.get("xmlUrl", "")
+
+        if child_type == "rss" or xml_url:
+            # Flat feed — assign to fallback channel
+            target_uid = fallback_channel
+            feed_url = xml_url or child.get("url", "")
+            if not feed_url or not target_uid:
+                results.append({"channel": "(flat feed)", "url": feed_url, "status": "skipped — no fallback channel"})
+                continue
+            if target_uid not in valid_channel_uids:
+                results.append({"channel": "(flat feed)", "url": feed_url, "status": "skipped — invalid fallback channel"})
+                continue
+            try:
+                api.follow_feed(endpoint, token, target_uid, feed_url)
+                results.append({"channel": fallback_channel, "url": feed_url, "status": "ok"})
+            except api.MicrosubError as exc:
+                results.append({"channel": fallback_channel, "url": feed_url, "status": f"error: {exc}"})
+        else:
+            # Folder — treat each top-level folder as one channel.
+            # Nested folders are flattened into that top-level channel.
+            folder_name = (child.get("title") or child.get("text") or "").strip()
+            if not folder_name:
+                folder_name = "Imported"
+            folder_name_lower = folder_name.lower()
+            if folder_name_lower in existing_channel_names:
+                channel_uid = existing_channel_names[folder_name_lower]
+            else:
+                try:
+                    new_ch = api.create_channel(endpoint, token, folder_name)
+                    channel_uid = new_ch.get("uid", "")
+                    existing_channel_names[folder_name_lower] = channel_uid
+                except api.MicrosubError as exc:
+                    for feed_outline in child.iter("outline"):
+                        feed_url = feed_outline.get("xmlUrl", "") or feed_outline.get("url", "")
+                        if feed_url:
+                            results.append({"channel": folder_name, "url": feed_url, "status": f"error creating channel: {exc}"})
+                    continue
+
+            seen_feed_urls = set()
+            for feed_outline in child.iter("outline"):
+                feed_url = feed_outline.get("xmlUrl", "") or feed_outline.get("url", "")
+                if not feed_url or feed_url in seen_feed_urls:
+                    continue
+                seen_feed_urls.add(feed_url)
+                try:
+                    api.follow_feed(endpoint, token, channel_uid, feed_url)
+                    results.append({"channel": folder_name, "url": feed_url, "status": "ok"})
+                except api.MicrosubError as exc:
+                    results.append({"channel": folder_name, "url": feed_url, "status": f"error: {exc}"})
+
+    return render(request, "opml_import.html", {
+        "channels": channels,
+        "results": results,
+    })
+
+
+# --- Account Views ---
+
+
+def account_export_view(request):
+    if not request.session.get("access_token"):
+        return redirect("login")
+
+    user_url = request.session.get("user_url")
+    if not user_url:
+        return redirect("login")
+
+    user_settings = _get_user_settings(request)
+
+    drafts = list(Draft.objects.filter(user_url=user_url).values(
+        "title", "content", "tags", "photos", "location", "created_at", "updated_at"
+    ))
+
+    interactions = list(
+        Interaction.objects.filter(user_url=user_url)
+        .select_related("entry")
+        .values("kind", "content", "result_url", "created_at", "entry__url", "entry__title")
+    )
+
+    payload = {
+        "exported_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "user_url": user_url,
+        "settings": {
+            "default_filter": user_settings.default_filter,
+            "mark_read_behavior": user_settings.mark_read_behavior,
+            "expand_content": user_settings.expand_content,
+            "infinite_scroll": user_settings.infinite_scroll,
+            "show_gardn_harvest": user_settings.show_gardn_harvest,
+        },
+        "drafts": drafts,
+        "interactions": interactions,
+    }
+
+    slug = user_url.replace("https://", "").replace("http://", "").strip("/").replace("/", "-")
+    date_str = datetime.date.today().isoformat()
+    filename = f"padd-export-{slug}-{date_str}.json"
+
+    response = HttpResponse(
+        json.dumps(payload, default=str, indent=2),
+        content_type="application/json; charset=utf-8",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def account_delete_view(request):
+    if not request.session.get("access_token"):
+        return redirect("login")
+
+    user_url = request.session.get("user_url")
+    if not user_url:
+        return redirect("login")
+
+    error = None
+
+    if request.method == "POST":
+        confirm_url = request.POST.get("confirm_url", "").strip().rstrip("/")
+        normalized = user_url.strip().rstrip("/")
+        if confirm_url == normalized:
+            UserSettings.objects.filter(user_url=user_url).delete()
+            Draft.objects.filter(user_url=user_url).delete()
+            Interaction.objects.filter(user_url=user_url).delete()
+            DismissedBroadcast.objects.filter(user_url=user_url).delete()
+            KnownUser.objects.filter(url=user_url).delete()
+            request.session.flush()
+            return redirect("landing")
+        else:
+            error = "The URL you entered did not match. No data was deleted."
+
+    return render(request, "account_delete.html", {
+        "user_url": user_url,
+        "error": error,
+    })
+
+
 # --- Broadcast Views ---
 
 
@@ -971,3 +1502,43 @@ def broadcast_dismiss_view(request, broadcast_id):
 def broadcast_banner_view(request):
     """Returns the broadcast banner partial for HTMX polling."""
     return render(request, "partials/broadcast_banner.html")
+
+
+# --- Discover View ---
+
+
+def discover_view(request):
+    if not request.session.get("access_token"):
+        return redirect("login")
+
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    try:
+        channels = api.get_channels(endpoint, token)
+    except api.MicrosubError:
+        channels = []
+
+    sort = request.GET.get("sort", "hot")
+
+    entries = CachedEntry.objects.annotate(
+        like_count=Count("interactions", filter=Q(interactions__kind="like")),
+        repost_count=Count("interactions", filter=Q(interactions__kind="repost")),
+        reply_count=Count("interactions", filter=Q(interactions__kind="reply")),
+        total_interactions=Count("interactions"),
+        last_interaction=Max("interactions__created_at"),
+    ).filter(total_interactions__gt=0)
+
+    if sort == "new":
+        entries = entries.order_by("-last_interaction")
+    else:  # "hot" default
+        entries = entries.order_by("-total_interactions", "-last_interaction")
+
+    paginator = Paginator(entries, 25)
+    page = paginator.get_page(request.GET.get("page", 1))
+
+    return render(request, "discover.html", {
+        "entries": page,
+        "sort": sort,
+        "channels": channels,
+        "has_micropub": bool(request.session.get("micropub_endpoint")),
+    })

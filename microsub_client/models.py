@@ -73,6 +73,7 @@ class UserSettings(models.Model):
     )
     expand_content = models.BooleanField(default=False)
     infinite_scroll = models.BooleanField(default=False)
+    show_gardn_harvest = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Settings for {self.user_url}"
@@ -85,3 +86,25 @@ class DismissedBroadcast(models.Model):
 
     class Meta:
         unique_together = [("user_url", "broadcast")]
+
+
+class Draft(models.Model):
+    user_url = models.URLField(max_length=2048, db_index=True)
+    title = models.CharField(max_length=512, blank=True, default="")
+    content = models.TextField(blank=True, default="")
+    tags = models.TextField(blank=True, default="")   # comma-separated
+    photos = models.JSONField(default=list, blank=True)  # list of uploaded media URLs
+    location = models.CharField(max_length=255, blank=True, default="")  # geo:lat,lng
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return self.title or self.content[:60] or f"Draft {self.pk}"
+
+    @property
+    def display_name(self):
+        return self.title or (self.content[:60] + ("…" if len(self.content) > 60 else "")) or "Untitled Draft"

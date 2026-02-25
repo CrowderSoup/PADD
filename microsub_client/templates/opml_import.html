@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}OPML Import — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Import</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list">
+    <a href="{% url 'settings' %}" class="lcars-channel-item">
+      <span class="lcars-channel-name"><i class="fas fa-arrow-left"></i> Back to Settings</span>
+    </a>
+  </nav>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-settings">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">OPML Import</h2>
+  </div>
+
+  {% if error %}
+  <div class="lcars-error">{{ error }}</div>
+  {% endif %}
+
+  {% if results %}
+  <div class="lcars-settings-section">
+    <div class="lcars-settings-label">Import Results</div>
+    <table class="lcars-opml-results">
+      <thead>
+        <tr>
+          <th>Channel</th>
+          <th>Feed URL</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in results %}
+        <tr class="{% if row.status == 'ok' %}lcars-opml-ok{% else %}lcars-opml-err{% endif %}">
+          <td>{{ row.channel }}</td>
+          <td class="lcars-opml-url">{{ row.url }}</td>
+          <td>{{ row.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:16px;">
+      <a href="{% url 'opml-import' %}" class="lcars-button lcars-button-blue">Import Another</a>
+      <a href="{% url 'index' %}" class="lcars-button lcars-button-orange" style="margin-left:8px;">Go to Timeline</a>
+    </div>
+  </div>
+  {% else %}
+
+  <form method="post" enctype="multipart/form-data" class="lcars-opml-form">
+    {% csrf_token %}
+
+    <div class="lcars-settings-section">
+      <div class="lcars-settings-label">OPML File</div>
+      <p class="lcars-settings-hint">OPML folders will be imported as channels. Feeds inside each folder will be followed in that channel.</p>
+      <input type="file" name="opml_file" accept=".opml,.xml" class="lcars-input" required>
+    </div>
+
+    <div class="lcars-settings-section">
+      <div class="lcars-settings-label">Fallback Channel for Flat Feeds</div>
+      <p class="lcars-settings-hint">Feeds not inside a folder will be added to this channel.</p>
+      <select name="fallback_channel" class="lcars-input">
+        <option value="">— skip flat feeds —</option>
+        {% for ch in channels %}
+        <option value="{{ ch.uid }}">{{ ch.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="lcars-new-post-actions">
+      <button type="submit" class="lcars-button lcars-button-orange">Import</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -84,11 +84,11 @@
       {% if users_page.has_other_pages %}
         <div class="lcars-pagination">
           {% if users_page.has_previous %}
-            <a href="?page={{ users_page.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" class="lcars-button">Previous</a>
+            <a href="?page={{ users_page.previous_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="lcars-button">Previous</a>
           {% endif %}
           <span>Page {{ users_page.number }} of {{ users_page.paginator.num_pages }}</span>
           {% if users_page.has_next %}
-            <a href="?page={{ users_page.next_page_number }}{% if q %}&q={{ q }}{% endif %}" class="lcars-button">Next</a>
+            <a href="?page={{ users_page.next_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="lcars-button">Next</a>
           {% endif %}
         </div>
       {% endif %}

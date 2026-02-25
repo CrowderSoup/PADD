@@ -96,14 +96,16 @@ def upload_media(media_endpoint, token, file):
 
 
 def create_post(endpoint, token, content, name=None, category=None,
-                photo=None, location=None):
-    data = {"h": "entry", "content": content}
+                photo=None, location=None, syndicate_to=None):
+    data = [("h", "entry"), ("content", content)]
     if name:
-        data["name"] = name
+        data.append(("name", name))
     if category:
-        data["category[]"] = category
+        data.extend([("category[]", t) for t in category])
     if photo:
-        data["photo[]"] = photo
+        data.extend([("photo[]", p) for p in photo])
     if location:
-        data["location"] = location
+        data.append(("location", location))
+    if syndicate_to:
+        data.extend([("syndicate-to[]", uid) for uid in syndicate_to])
     return _post(endpoint, token, data)
