@@ -3588,6 +3588,7 @@ body.lcars-modal-open {
 @media (max-width: 700px) {
   .photo-editor-workspace {
     flex-direction: column;
+    flex-wrap: nowrap;
   }
 
   .photo-editor-canvas-wrap {
