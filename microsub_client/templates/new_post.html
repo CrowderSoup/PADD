@@ -62,7 +62,7 @@
       <label class="lcars-label" for="post-content">Content</label>
       <textarea name="content" id="post-content" class="lcars-reply-input" rows="10"
                 placeholder="Write your post in Markdown..."
-                {% if draft %}data-draft-content="{{ draft.content|escapejs }}"{% endif %}></textarea>
+                {% if draft %}data-draft-content="{{ draft.content }}"{% endif %}></textarea>
       <div id="char-counter" class="lcars-char-counter" aria-live="polite"></div>
     </div>
 
@@ -77,7 +77,7 @@
         </div>
       </div>
       <input type="hidden" name="tags" id="post-tags"
-             {% if draft %}data-draft-tags="{{ draft.tags|escapejs }}"{% endif %}>
+             {% if draft %}data-draft-tags="{{ draft.tags }}"{% endif %}>
     </div>
 
     {% if has_media_endpoint %}
