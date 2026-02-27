@@ -27,5 +27,21 @@
     {% csrf_token %}
     {% include "partials/settings_form.html" %}
   </form>
+
+  <div class="lcars-settings-section">
+    <div class="lcars-settings-label">Subscriptions</div>
+    <div class="lcars-opml-links">
+      <a href="{% url 'opml-export' %}" class="lcars-button lcars-button-blue">Export OPML</a>
+      <a href="{% url 'opml-import' %}" class="lcars-button lcars-button-blue">Import OPML</a>
+    </div>
+  </div>
+
+  <div class="lcars-settings-section">
+    <div class="lcars-settings-label">Account</div>
+    <div class="lcars-opml-links">
+      <a href="{% url 'account-export' %}" class="lcars-button lcars-button-blue">Export Data</a>
+      <a href="{% url 'account-delete' %}" class="lcars-button lcars-button-orange">Delete Account</a>
+    </div>
+  </div>
 </div>
 {% endblock %}

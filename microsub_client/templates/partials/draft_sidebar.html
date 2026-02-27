@@ -1,0 +1,24 @@
+{% if drafts %}
+<div class="lcars-channel-section-header">Drafts</div>
+{% for draft in drafts %}
+<div class="lcars-channel-item lcars-draft-item {% if draft.pk == current_draft_id %}lcars-channel-active{% endif %}">
+  <a href="{% url 'new-post' %}?draft={{ draft.pk }}" class="lcars-draft-link">
+    <span class="lcars-channel-name">{{ draft.display_name }}</span>
+  </a>
+  <button type="button"
+          class="lcars-draft-delete-btn"
+          aria-label="Delete draft"
+          hx-post="{% url 'draft-delete' draft.pk %}"
+          hx-target="#compose-sidebar-nav"
+          hx-swap="innerHTML"
+          hx-include="#draft-id">
+    <i class="fas fa-times"></i>
+  </button>
+</div>
+{% endfor %}
+{% else %}
+<div class="lcars-channel-section-header">Drafts</div>
+<div class="lcars-channel-item lcars-draft-empty">
+  <span class="lcars-channel-name">No drafts</span>
+</div>
+{% endif %}

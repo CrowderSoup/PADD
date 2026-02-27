@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Discover — PADD{% endblock %}
+
+{% block sidebar %}
+<aside class="lcars-sidebar" id="channel-sidebar">
+  <div class="lcars-sidebar-header">
+    <span class="lcars-sidebar-label">Channels</span>
+  </div>
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
+  <nav class="lcars-channel-list" id="channel-nav">
+    {% include "partials/channel_list.html" %}
+  </nav>
+  {% include "partials/channel_management.html" %}
+  <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+  {% if has_micropub %}
+  <div class="lcars-sidebar-new-post">
+    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
+      <i class="fas fa-pen"></i> New Post
+    </a>
+  </div>
+  {% endif %}
+  <div id="feed-panel"></div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<div class="lcars-settings">
+  <div class="lcars-timeline-header">
+    <h1 class="lcars-channel-title">Discover</h1>
+    <div class="lcars-filter-toggle">
+      {% if sort == "hot" %}
+        <span class="lcars-filter-btn lcars-filter-active">Hot</span>
+        <a href="?sort=new" class="lcars-filter-btn">New</a>
+      {% else %}
+        <a href="?sort=hot" class="lcars-filter-btn">Hot</a>
+        <span class="lcars-filter-btn lcars-filter-active">New</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="lcars-settings-section">
+    {% if entries %}
+      {% for entry in entries %}
+        <div class="lcars-broadcast-admin-item">
+          <div class="lcars-broadcast-admin-info">
+            <span class="lcars-discover-badge lcars-discover-like" title="Likes">
+              <i class="fas fa-heart"></i> {{ entry.like_count }}
+            </span>
+            <span class="lcars-discover-badge lcars-discover-repost" title="Reposts">
+              <i class="fas fa-retweet"></i> {{ entry.repost_count }}
+            </span>
+            <span class="lcars-discover-badge lcars-discover-reply" title="Replies">
+              <i class="fas fa-reply"></i> {{ entry.reply_count }}
+            </span>
+          </div>
+          <p class="lcars-broadcast-admin-message">
+            {% if entry.url %}
+              <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer">{{ entry.title|default:entry.url }}</a>
+            {% else %}
+              {{ entry.title|default:"(no title)" }}
+            {% endif %}
+          </p>
+          {% if entry.author_name or entry.author_url %}
+            <div class="lcars-broadcast-admin-date">
+              {% if entry.author_url %}
+                <a href="{{ entry.author_url }}" target="_blank" rel="noopener noreferrer">{{ entry.author_name|default:entry.author_url }}</a>
+              {% else %}
+                {{ entry.author_name }}
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      {% if entries.has_other_pages %}
+        <div class="lcars-pagination">
+          {% if entries.has_previous %}
+            <a href="?sort={{ sort }}&page={{ entries.previous_page_number }}" class="lcars-button">Previous</a>
+          {% endif %}
+          <span>Page {{ entries.number }} of {{ entries.paginator.num_pages }}</span>
+          {% if entries.has_next %}
+            <a href="?sort={{ sort }}&page={{ entries.next_page_number }}" class="lcars-button">Next</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="lcars-empty">No interactions recorded yet. Interact with entries in the timeline to see them here.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

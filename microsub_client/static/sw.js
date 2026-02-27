@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'padd-v1';
+const CACHE_VERSION = 'padd-v2';
 const PRECACHE_URLS = [
   '/offline/',
   '/static/css/lcars.css',
@@ -33,7 +33,28 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Static assets: cache-first
+  // JavaScript: network-first so that code changes are always reflected
+  // immediately. The browser's HTTP cache (warmed by WhiteNoise's immutable
+  // headers on content-hashed files) makes this fast in practice. Falls back
+  // to cache for offline use.
+  if (url.pathname.endsWith('.js')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Other static assets (CSS, images, fonts): cache-first.
+  // These are safe to cache aggressively because WhiteNoise content-hashes
+  // their URLs, so a changed file always gets a new URL.
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(
       caches.match(request).then((cached) => {

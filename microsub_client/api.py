@@ -86,6 +86,44 @@ def mark_read(endpoint, token, channel_uid, entry_ids):
     return _request("POST", endpoint, token, data=data)
 
 
+def mark_channel_read(endpoint, token, channel_uid):
+    """Mark all unread entries in a channel as read.
+
+    Some Microsub servers reject channel-level mark_read calls without entry IDs.
+    To be compatible, repeatedly fetch unread entries and mark each batch by ID.
+    """
+    marked_count = 0
+    previous_ids = None
+
+    def _entry_id_for_mark_read(item):
+        for key in ("_id", "id", "entry_id", "url"):
+            value = item.get(key)
+            if isinstance(value, list):
+                value = value[0] if value else ""
+            if isinstance(value, str) and value:
+                return value
+        return ""
+
+    while True:
+        timeline = get_timeline(endpoint, token, channel_uid, is_read=False)
+        items = timeline.get("items", [])
+        entry_ids = [eid for eid in (_entry_id_for_mark_read(item) for item in items) if eid]
+
+        if not entry_ids:
+            break
+
+        # Guard against an endless loop if the server returns the same unread
+        # items after a successful response.
+        if entry_ids == previous_ids:
+            raise MicrosubError("Unable to mark channel read; unread entries did not change")
+
+        mark_read(endpoint, token, channel_uid, entry_ids)
+        marked_count += len(entry_ids)
+        previous_ids = entry_ids
+
+    return {"marked": marked_count}
+
+
 def mark_unread(endpoint, token, channel_uid, entry_id):
     """Mark a single entry as unread."""
     data = {
@@ -194,3 +232,27 @@ def unfollow_feed(endpoint, token, channel_uid, url):
         "channel": channel_uid,
         "url": url,
     })
+
+
+# --- Mute / Block ---
+
+
+def mute_user(endpoint, token, url, channel=None):
+    """Mute an author. If channel is provided, mute is channel-specific."""
+    data = {"action": "mute", "url": url}
+    if channel:
+        data["channel"] = channel
+    return _request("POST", endpoint, token, data=data)
+
+
+def unmute_user(endpoint, token, url, channel=None):
+    """Unmute a previously muted author."""
+    data = {"action": "unmute", "url": url}
+    if channel:
+        data["channel"] = channel
+    return _request("POST", endpoint, token, data=data)
+
+
+def block_user(endpoint, token, url):
+    """Block an author globally."""
+    return _request("POST", endpoint, token, data={"action": "block", "url": url})

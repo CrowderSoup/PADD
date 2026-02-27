@@ -14,7 +14,7 @@
               type="button">Preview</button>
       <button class="lcars-interaction-btn lcars-like-btn"
               hx-post="{% url 'feed-follow' %}"
-              hx-vals='{"channel": "{{ channel_uid }}", "url": "{{ result.url }}"}'
+              hx-vals='{"channel": "{{ channel_uid|escapejs }}", "url": "{{ result.url|escapejs }}"}'
               hx-target="#feed-current-list"
               hx-swap="innerHTML"
               type="button">Follow</button>

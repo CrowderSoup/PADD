@@ -89,3 +89,19 @@
     <span>{% if infinite_scroll %}On{% else %}Off{% endif %}</span>
   </label>
 </div>
+
+<div class="lcars-settings-section">
+  <div class="lcars-settings-label">Harvest Button (Gardn)</div>
+  <label class="lcars-toggle-label">
+    <input type="checkbox" name="show_gardn_harvest"
+           {% if show_gardn_harvest %}checked{% endif %}
+           class="lcars-toggle-input"
+           hx-post="{% url 'settings' %}"
+           hx-include="#settings-form"
+           hx-target="#settings-form"
+           hx-swap="innerHTML">
+    <span class="lcars-toggle-track"><span class="lcars-toggle-thumb"></span></span>
+    <span>{% if show_gardn_harvest %}On{% else %}Off{% endif %}</span>
+  </label>
+  <p class="lcars-settings-hint" style="margin-top:8px;">Show a Harvest button on entries that opens gardn.website to bookmark the post.</p>
+</div>

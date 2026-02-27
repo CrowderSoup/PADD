@@ -9,12 +9,20 @@
     <span class="lcars-sidebar-label">Compose</span>
   </div>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
-  <nav class="lcars-channel-list">
-    <a href="{% url 'index' %}" class="lcars-channel-item">
-      <span class="lcars-channel-name"><i class="fas fa-arrow-left"></i> Back to Timeline</span>
-    </a>
+  <nav class="lcars-channel-list" id="compose-sidebar-nav">
+    {% include "partials/draft_sidebar.html" with drafts=drafts current_draft_id=draft.pk %}
   </nav>
+  <div class="lcars-channel-add">
+    <a href="{% url 'index' %}" class="lcars-channel-add-toggle lcars-channel-add-toggle--borderless">
+      <i class="fas fa-arrow-left"></i> Back to Timeline
+    </a>
+  </div>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
+  <div class="lcars-sidebar-new-post">
+    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
+      <i class="fas fa-pen"></i> New Post
+    </a>
+  </div>
 </aside>
 {% endblock %}
 
@@ -41,23 +49,35 @@
 
   <form method="post" class="lcars-new-post-form" id="new-post-form">
     {% csrf_token %}
+    <input type="hidden" name="draft_id" id="draft-id" value="{{ draft.pk|default:'' }}">
 
     <div class="lcars-form-group">
       <label class="lcars-label" for="post-name">Title (optional)</label>
       <input type="text" name="name" id="post-name" class="lcars-input"
-             placeholder="Leave blank for a note, add a title for an article">
+             placeholder="Leave blank for a note, add a title for an article"
+             {% if draft %}value="{{ draft.title }}"{% endif %}>
     </div>
 
     <div class="lcars-form-group">
       <label class="lcars-label" for="post-content">Content</label>
       <textarea name="content" id="post-content" class="lcars-reply-input" rows="10"
-                placeholder="Write your post in Markdown..."></textarea>
+                placeholder="Write your post in Markdown..."
+                {% if draft %}data-draft-content="{{ draft.content|escapejs }}"{% endif %}></textarea>
+      <div id="char-counter" class="lcars-char-counter" aria-live="polite"></div>
     </div>
 
     <div class="lcars-form-group">
-      <label class="lcars-label" for="post-tags">Tags (comma-separated)</label>
-      <input type="text" name="tags" id="post-tags" class="lcars-input"
-             placeholder="e.g. indieweb, web, personal">
+      <label class="lcars-label" for="post-tag-input">Tags</label>
+      <div class="lcars-tag-field" id="lcars-tag-field">
+        <div class="lcars-tag-bracket"></div>
+        <div class="lcars-tag-chips" id="lcars-tag-chips">
+          <input type="text" id="post-tag-input" class="lcars-tag-text-input"
+                 placeholder="Type a tag, press Enter or comma…"
+                 autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+      </div>
+      <input type="hidden" name="tags" id="post-tags"
+             {% if draft %}data-draft-tags="{{ draft.tags|escapejs }}"{% endif %}>
     </div>
 
     {% if has_media_endpoint %}
@@ -67,32 +87,214 @@
         <div class="lcars-media-thumbnails" id="media-thumbnails"></div>
         <label class="lcars-media-add-btn">
           <i class="fas fa-plus"></i> Add Photo
-          <input type="file" accept="image/*" id="media-file-input" class="lcars-hidden" data-upload-url="{% url 'micropub-media' %}">
+          <input type="file" accept="image/*,.heic,.heif,.tif,.tiff,.bmp,.dng,.cr2,.nef,.arw,.raf,.orf,.rw2,.pef" id="media-file-input" class="lcars-hidden" data-upload-url="{% url 'micropub-media' %}" data-convert-url="{% url 'image-convert' %}">
         </label>
         <div class="lcars-media-uploading lcars-hidden" id="media-uploading">
-          <div class="lcars-scan-line"></div>
+          <div class="lcars-progress-bar"><div class="lcars-scan-line"></div></div>
           Uploading...
         </div>
+        <div class="lcars-media-converting lcars-hidden" id="media-converting">
+          <div class="lcars-progress-bar"><div class="lcars-scan-line"></div></div>
+          Converting&hellip;
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if syndicate_to %}
+    <div class="lcars-form-group">
+      <label class="lcars-label">Syndicate to</label>
+      <div class="lcars-syndicate-options">
+        {% for target in syndicate_to %}
+        <label class="lcars-syndicate-option">
+          <input type="checkbox" name="syndicate_to" value="{{ target.uid }}">
+          {{ target.name }}
+        </label>
+        {% endfor %}
       </div>
     </div>
     {% endif %}
 
     <div class="lcars-form-group">
       <label class="lcars-label">
-        <input type="checkbox" id="location-toggle"> Include Location
+        <input type="checkbox" id="location-toggle"{% if draft and draft.location %} checked{% endif %}> Include Location
       </label>
-      <div class="lcars-location-display lcars-hidden" id="location-display">
-        <span id="location-coords"></span>
+      <div class="lcars-location-display {% if not draft or not draft.location %}lcars-hidden{% endif %}" id="location-display">
+        <span id="location-coords">{% if draft and draft.location %}{{ draft.location }}{% endif %}</span>
         <div class="lcars-location-map" id="location-map"></div>
-        <input type="hidden" name="location" id="location-input">
+        <input type="hidden" name="location" id="location-input" value="{% if draft %}{{ draft.location }}{% endif %}">
       </div>
     </div>
 
     <div class="lcars-new-post-actions">
-      <button type="submit" class="lcars-button lcars-button-orange">Publish</button>
+      <button type="button" id="save-draft-btn"
+              class="lcars-button-draft"
+              hx-post="{% url 'draft-save' %}"
+              hx-target="#compose-sidebar-nav"
+              hx-swap="innerHTML"
+              hx-include="#new-post-form">
+        Save Draft
+      </button>
+      <button type="submit" id="post-submit-btn" class="lcars-button lcars-button-orange">Publish</button>
     </div>
   </form>
   {% endif %}
+
+  {% if draft and draft.photos %}
+  {{ draft.photos|json_script:"draft-photos" }}
+  {% endif %}
+
+  {# SVG filters for canvas ctx.filter — must live in the document DOM #}
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <defs>
+      <filter id="photo-editor-matte-filter" color-interpolation-filters="sRGB">
+        <feComponentTransfer>
+          <feFuncR type="linear" slope="0.80" intercept="0.10"/>
+          <feFuncG type="linear" slope="0.80" intercept="0.10"/>
+          <feFuncB type="linear" slope="0.80" intercept="0.10"/>
+        </feComponentTransfer>
+      </filter>
+    </defs>
+  </svg>
+
+  <div id="photo-editor-overlay" class="photo-editor-overlay lcars-hidden" role="dialog" aria-modal="true" aria-label="Photo Editor">
+    <div class="photo-editor-modal">
+      <div class="photo-editor-accent" aria-hidden="true"></div>
+      <div class="photo-editor-body">
+        <div class="photo-editor-title">Edit Photo</div>
+        <div class="photo-editor-workspace">
+          <div class="photo-editor-canvas-wrap">
+            <canvas id="photo-editor-canvas" role="img" aria-label="Photo editor preview"></canvas>
+            <div class="photo-editor-crop-hint lcars-hidden">Drag inside to move &middot; drag outside to redraw</div>
+            <div class="photo-editor-processing lcars-hidden" id="photo-editor-processing" aria-live="polite" aria-label="Processing">
+              <div class="lcars-progress-bar lcars-progress-bar--lg"><div class="lcars-scan-line"></div></div>
+              <div class="photo-editor-processing-label" id="photo-editor-processing-label">Processing&hellip;</div>
+            </div>
+          </div>
+          <div class="photo-editor-controls">
+            <div class="photo-editor-controls-header">
+              <span class="photo-editor-section-label" id="photo-editor-mode-label">Filters</span>
+              <button type="button" id="photo-editor-adjust-btn" class="photo-editor-adjust-btn" title="Manual adjustments" aria-label="Toggle manual adjustments">
+                <i class="fas fa-cog"></i>
+              </button>
+            </div>
+            <div class="photo-editor-filter-strip">
+              <button type="button" class="photo-editor-filter-btn photo-editor-filter-btn--active" data-filter="none">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">None</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="vivid">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Vivid</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="warm">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Warm</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="cool">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Cool</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="bw">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">B&amp;W</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="fade">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Fade</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="noir">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Noir</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="dusk">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Dusk</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="matte">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Matte</span>
+              </button>
+              <button type="button" class="photo-editor-filter-btn" data-filter="chrome">
+                <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
+                <span class="photo-editor-filter-name">Chrome</span>
+              </button>
+            </div>
+            <div class="photo-editor-adjustments lcars-hidden" id="photo-editor-adjustments">
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Brightness</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-brightness"
+                       min="0.3" max="1.7" step="0.01" value="1">
+                <span class="photo-editor-adjust-val" id="adj-brightness-val">0</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Contrast</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-contrast"
+                       min="0.5" max="1.5" step="0.01" value="1">
+                <span class="photo-editor-adjust-val" id="adj-contrast-val">0</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Saturation</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-saturation"
+                       min="0" max="2" step="0.01" value="1">
+                <span class="photo-editor-adjust-val" id="adj-saturation-val">0</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Warmth</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-warmth"
+                       min="0" max="0.8" step="0.01" value="0">
+                <span class="photo-editor-adjust-val" id="adj-warmth-val">0</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Hue</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-hue"
+                       min="-90" max="90" step="1" value="0">
+                <span class="photo-editor-adjust-val" id="adj-hue-val">0&deg;</span>
+              </div>
+            </div>
+            <div class="photo-editor-section-label">Crop</div>
+            <div class="photo-editor-crop-presets">
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="">Free</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1">1:1</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.333">4:3</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.5">3:2</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.778">16:9</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="0.5625">9:16</button>
+            </div>
+            <div class="photo-editor-crop-actions lcars-hidden">
+              <button type="button" id="photo-editor-apply-crop" class="lcars-button lcars-button-orange">Apply Crop</button>
+              <button type="button" id="photo-editor-reset-crop" class="lcars-button lcars-button-blue">Reset</button>
+            </div>
+            <div class="photo-editor-section-label">Rotate</div>
+            <div class="photo-editor-rotate-btns">
+              <button type="button" id="photo-editor-rotate-ccw" class="photo-editor-rotate-btn" title="Rotate 90° counter-clockwise">
+                <i class="fas fa-undo"></i>
+              </button>
+              <button type="button" id="photo-editor-rotate-cw" class="photo-editor-rotate-btn" title="Rotate 90° clockwise">
+                <i class="fas fa-redo"></i>
+              </button>
+            </div>
+            <div class="photo-editor-rotate-fine">
+              <div class="photo-editor-rotate-fine-row">
+                <span class="photo-editor-adjust-label">Straighten</span>
+                <input type="range" id="photo-editor-rotate-slider" class="photo-editor-adjust-slider"
+                       min="-45" max="45" step="0.5" value="0">
+                <span id="photo-editor-rotate-val" class="photo-editor-adjust-val">0&deg;</span>
+              </div>
+              <div class="photo-editor-rotate-actions lcars-hidden" id="photo-editor-rotate-actions">
+                <button type="button" id="photo-editor-apply-rotate" class="lcars-button lcars-button-orange">Apply</button>
+                <button type="button" id="photo-editor-cancel-rotate" class="lcars-button lcars-button-blue">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="photo-editor-actions">
+          <button type="button" id="photo-editor-cancel" class="lcars-button lcars-button-blue">Cancel</button>
+          <button type="button" id="photo-editor-upload" class="lcars-button lcars-button-orange">Upload</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}

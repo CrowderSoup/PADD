@@ -1,15 +1,40 @@
-<article class="lcars-entry lcars-entry-{{ entry.display_type }}" data-entry-id="{{ entry.entry_id|default:entry.url }}">
+{% load static %}<article class="lcars-entry lcars-entry-{{ entry.display_type }}" data-entry-id="{{ entry.entry_id|default:entry.url }}">
   <div class="lcars-entry-indicator"></div>
   <div class="lcars-entry-content">
     <div class="lcars-entry-header">
       {% if entry.author %}
         <div class="lcars-author">
           {% if entry.author.photo %}
-            <img src="{{ entry.author.photo }}" alt="" class="lcars-author-photo">
+            <img src="{{ entry.author.photo }}" alt="" class="lcars-author-photo" onerror="this.onerror=null;this.src='{% static 'cadet.svg' %}'">
           {% endif %}
           <span class="lcars-author-name">
             {% if entry.author.name %}{{ entry.author.name }}{% elif entry.author.url %}{{ entry.author.url }}{% endif %}
           </span>
+          {% if entry.author.url %}
+          <div class="lcars-author-actions">
+            <button class="lcars-author-actions-btn" type="button" title="Author actions">&#8942;</button>
+            <div class="lcars-author-actions-menu">
+              <button hx-post="{% url 'mute-user' %}"
+                      hx-vals='{"author_url": "{{ entry.author.url|escapejs }}", "channel": "{{ channel_uid|escapejs }}"}'
+                      hx-target="closest article"
+                      hx-swap="outerHTML"
+                      hx-confirm="Mute {{ entry.author.name|default:entry.author.url }}?"
+                      type="button">Mute author</button>
+              <button hx-post="{% url 'unmute-user' %}"
+                      hx-vals='{"author_url": "{{ entry.author.url|escapejs }}", "channel": "{{ channel_uid|escapejs }}"}'
+                      hx-target="closest article"
+                      hx-swap="outerHTML"
+                      hx-confirm="Unmute {{ entry.author.name|default:entry.author.url }}?"
+                      type="button">Unmute author</button>
+              <button hx-post="{% url 'block-user' %}"
+                      hx-vals='{"author_url": "{{ entry.author.url|escapejs }}"}'
+                      hx-target="closest article"
+                      hx-swap="outerHTML"
+                      hx-confirm="Block {{ entry.author.name|default:entry.author.url }}? This is global."
+                      type="button">Block author</button>
+            </div>
+          </div>
+          {% endif %}
         </div>
       {% endif %}
       <div class="lcars-entry-meta">
@@ -19,7 +44,7 @@
         {% if entry.is_read %}
           <div class="lcars-entry-read-action"
                hx-post="{% url 'mark-unread' %}"
-               hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
+               hx-vals='{"channel": "{{ channel_uid|escapejs }}", "entry": "{{ entry.entry_id|default:entry.url|escapejs }}"}'
                hx-swap="outerHTML"
                hx-target="this">
             <span class="lcars-read-status lcars-read">Read</span>
@@ -27,7 +52,7 @@
         {% else %}
           <div class="lcars-entry-read-action"
                hx-post="{% url 'mark-read' %}"
-               hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
+               hx-vals='{"channel": "{{ channel_uid|escapejs }}", "entry": "{{ entry.entry_id|default:entry.url|escapejs }}"}'
                hx-swap="innerHTML"
                hx-target="this"
                data-mark-read-url="{% url 'mark-read' %}"
@@ -39,7 +64,7 @@
         {% endif %}
         <button class="lcars-entry-remove-btn"
                 hx-post="{% url 'timeline-remove' %}"
-                hx-vals='{"channel": "{{ channel_uid }}", "entry": "{{ entry.entry_id|default:entry.url }}"}'
+                hx-vals='{"channel": "{{ channel_uid|escapejs }}", "entry": "{{ entry.entry_id|default:entry.url|escapejs }}"}'
                 hx-target="closest article"
                 hx-swap="outerHTML"
                 hx-confirm="Remove this entry?"
@@ -56,13 +81,61 @@
     {% endif %}
 
     {% if entry.display_type == "like" %}
-      <p class="lcars-entry-action">Liked <a href="{{ entry.like_of }}" target="_blank" rel="noopener">{{ entry.like_of }}</a></p>
+      <div class="lcars-entry-context">
+        <span class="lcars-entry-action-label">Liked</span>
+        {% if entry.like_of_context %}{% with ctx=entry.like_of_context %}
+          <blockquote class="lcars-cite-preview">
+            {% if ctx.author %}<cite class="lcars-cite-author">{% if ctx.author.photo %}<img src="{{ ctx.author.photo }}" alt="" class="lcars-cite-photo">{% endif %}{{ ctx.author.name|default:ctx.author.url }}</cite>{% endif %}
+            {% if ctx.name %}<p class="lcars-cite-title">{{ ctx.name }}</p>{% endif %}
+            {% if ctx.content %}<p class="lcars-cite-snippet">{{ ctx.content.text|default:ctx.content|truncatechars:280 }}</p>{% endif %}
+            <a href="{{ ctx.url|default:entry.like_of }}" class="lcars-cite-link" target="_blank" rel="noopener">View original</a>
+          </blockquote>
+        {% endwith %}{% else %}
+          <a href="{{ entry.like_of }}" target="_blank" rel="noopener">{{ entry.like_of }}</a>
+        {% endif %}
+      </div>
     {% elif entry.display_type == "repost" %}
-      <p class="lcars-entry-action">Reposted <a href="{{ entry.repost_of }}" target="_blank" rel="noopener">{{ entry.repost_of }}</a></p>
+      <div class="lcars-entry-context">
+        <span class="lcars-entry-action-label">Reposted</span>
+        {% if entry.repost_of_context %}{% with ctx=entry.repost_of_context %}
+          <blockquote class="lcars-cite-preview">
+            {% if ctx.author %}<cite class="lcars-cite-author">{% if ctx.author.photo %}<img src="{{ ctx.author.photo }}" alt="" class="lcars-cite-photo">{% endif %}{{ ctx.author.name|default:ctx.author.url }}</cite>{% endif %}
+            {% if ctx.name %}<p class="lcars-cite-title">{{ ctx.name }}</p>{% endif %}
+            {% if ctx.content %}<p class="lcars-cite-snippet">{{ ctx.content.text|default:ctx.content|truncatechars:280 }}</p>{% endif %}
+            <a href="{{ ctx.url|default:entry.repost_of }}" class="lcars-cite-link" target="_blank" rel="noopener">View original</a>
+          </blockquote>
+        {% endwith %}{% else %}
+          <a href="{{ entry.repost_of }}" target="_blank" rel="noopener">{{ entry.repost_of }}</a>
+        {% endif %}
+      </div>
     {% elif entry.display_type == "reply" %}
-      <p class="lcars-entry-action">In reply to <a href="{{ entry.in_reply_to }}" target="_blank" rel="noopener">{{ entry.in_reply_to }}</a></p>
+      <div class="lcars-entry-context">
+        <span class="lcars-entry-action-label">In reply to</span>
+        {% if entry.in_reply_to_context %}{% with ctx=entry.in_reply_to_context %}
+          <blockquote class="lcars-cite-preview">
+            {% if ctx.author %}<cite class="lcars-cite-author">{% if ctx.author.photo %}<img src="{{ ctx.author.photo }}" alt="" class="lcars-cite-photo">{% endif %}{{ ctx.author.name|default:ctx.author.url }}</cite>{% endif %}
+            {% if ctx.name %}<p class="lcars-cite-title">{{ ctx.name }}</p>{% endif %}
+            {% if ctx.content %}<p class="lcars-cite-snippet">{{ ctx.content.text|default:ctx.content|truncatechars:280 }}</p>{% endif %}
+            <a href="{{ ctx.url|default:entry.in_reply_to }}" class="lcars-cite-link" target="_blank" rel="noopener">View original</a>
+          </blockquote>
+        {% endwith %}{% else %}
+          <a href="{{ entry.in_reply_to }}" target="_blank" rel="noopener">{{ entry.in_reply_to }}</a>
+        {% endif %}
+      </div>
     {% elif entry.display_type == "bookmark" %}
-      <p class="lcars-entry-action">Bookmarked <a href="{{ entry.bookmark_of }}" target="_blank" rel="noopener">{{ entry.bookmark_of }}</a></p>
+      <div class="lcars-entry-context">
+        <span class="lcars-entry-action-label">Bookmarked</span>
+        {% if entry.bookmark_of_context %}{% with ctx=entry.bookmark_of_context %}
+          <blockquote class="lcars-cite-preview">
+            {% if ctx.author %}<cite class="lcars-cite-author">{% if ctx.author.photo %}<img src="{{ ctx.author.photo }}" alt="" class="lcars-cite-photo">{% endif %}{{ ctx.author.name|default:ctx.author.url }}</cite>{% endif %}
+            {% if ctx.name %}<p class="lcars-cite-title">{{ ctx.name }}</p>{% endif %}
+            {% if ctx.content %}<p class="lcars-cite-snippet">{{ ctx.content.text|default:ctx.content|truncatechars:280 }}</p>{% endif %}
+            <a href="{{ ctx.url|default:entry.bookmark_of }}" class="lcars-cite-link" target="_blank" rel="noopener">View original</a>
+          </blockquote>
+        {% endwith %}{% else %}
+          <a href="{{ entry.bookmark_of }}" target="_blank" rel="noopener">{{ entry.bookmark_of }}</a>
+        {% endif %}
+      </div>
     {% elif entry.display_type == "checkin" %}
       <p class="lcars-entry-action"><i class="fas fa-map-marker-alt"></i> Checked in</p>
     {% endif %}
@@ -105,26 +178,39 @@
     </div>
     {% endif %}
 
-    {% if has_micropub and entry.url %}
+    {% if has_micropub and entry.url or show_gardn_harvest and entry.url %}
     <div class="lcars-interactions">
-      {% include "partials/interaction_buttons.html" with kind="like" active=entry.user_liked entry_url=entry.url result_url=entry.like_result_url %}
-      {% include "partials/interaction_buttons.html" with kind="repost" active=entry.user_reposted entry_url=entry.url result_url=entry.repost_result_url %}
-      <div class="lcars-reply-wrapper">
-        {% include "partials/interaction_buttons.html" with kind="reply" active=entry.user_replied entry_url=entry.url reply_url=entry.reply_url %}
-      </div>
+      {% if has_micropub and entry.url %}
+        {% include "partials/interaction_buttons.html" with kind="like" active=entry.user_liked entry_url=entry.url result_url=entry.like_result_url %}
+        {% include "partials/interaction_buttons.html" with kind="repost" active=entry.user_reposted entry_url=entry.url result_url=entry.repost_result_url %}
+        <div class="lcars-reply-wrapper">
+          {% include "partials/interaction_buttons.html" with kind="reply" active=entry.user_replied entry_url=entry.url reply_url=entry.reply_url %}
+        </div>
+      {% endif %}
+      {% if show_gardn_harvest and entry.url %}
+      <button class="lcars-interaction-btn lcars-harvest-btn"
+              type="button"
+              title="Harvest to Gardn"
+              onclick="window.open('https://gardn.website/harvest/?url=' + encodeURIComponent('{{ entry.url|escapejs }}') + '&title=' + encodeURIComponent('{{ entry.name|default:entry.url|escapejs }}') + '&popup=1', 'gardn-harvest', 'width=500,height=580,resizable=yes')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        <span>Harvest</span>
+      </button>
+      {% endif %}
     </div>
-    {% if entry.user_replied and entry.reply_content %}
-      <div class="lcars-reply-sent">
-        <p class="lcars-reply-sent-text">{{ entry.reply_content }}</p>
-        {% if entry.reply_url %}
-          <a href="{{ entry.reply_url }}" class="lcars-reply-sent-link" target="_blank" rel="noopener">View on your site</a>
-        {% else %}
-          <span class="lcars-reply-sent-nolink">Sent (no URL returned by server)</span>
-        {% endif %}
-      </div>
-    {% endif %}
-    {% if not entry.user_replied %}
-      {% include "partials/reply_form.html" with entry_url=entry.url %}
+    {% if has_micropub and entry.url %}
+      {% if entry.user_replied and entry.reply_content %}
+        <div class="lcars-reply-sent">
+          <p class="lcars-reply-sent-text">{{ entry.reply_content }}</p>
+          {% if entry.reply_url %}
+            <a href="{{ entry.reply_url }}" class="lcars-reply-sent-link" target="_blank" rel="noopener">View on your site</a>
+          {% else %}
+            <span class="lcars-reply-sent-nolink">Sent (no URL returned by server)</span>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if not entry.user_replied %}
+        {% include "partials/reply_form.html" with entry_url=entry.url %}
+      {% endif %}
     {% endif %}
     {% endif %}
   </div>

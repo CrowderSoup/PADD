@@ -1,13 +1,23 @@
 import logging
 from unittest.mock import patch
 
+from defusedxml.common import DefusedXmlException
+from django.core.files.uploadedfile import InMemoryUploadedFile, SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 _quiet_request = logging.getLogger("django.request")
 _quiet_request.setLevel(logging.CRITICAL)
 
 from microsub_client import api, micropub
-from microsub_client.models import Broadcast, DismissedBroadcast, Interaction, KnownUser, UserSettings
+from microsub_client.models import (
+    Broadcast,
+    CachedEntry,
+    DismissedBroadcast,
+    Draft,
+    Interaction,
+    KnownUser,
+    UserSettings,
+)
 
 from .conftest import SIMPLE_STORAGES, auth_session
 
@@ -608,6 +618,43 @@ class ChannelCreateViewTests(TestCase):
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
+class ChannelMarkReadViewTests(TestCase):
+    def test_get_returns_405(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/channels/mark-read/")
+        self.assertEqual(response.status_code, 405)
+
+    @patch("microsub_client.views.api.mark_channel_read")
+    def test_missing_channel_returns_400(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/mark-read/", {})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "ch1", "name": "One"}])
+    @patch("microsub_client.views.api.mark_channel_read", return_value={})
+    def test_success_returns_channel_list(self, mock_mark, _mock_ch):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/mark-read/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Mark as read", response.content.decode())
+        mock_mark.assert_called_once_with("https://microsub.example/", "test-token", "ch1")
+
+    @patch("microsub_client.views.api.mark_channel_read", side_effect=api.MicrosubError("fail"))
+    def test_api_error_returns_502(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.post("/api/channels/mark-read/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 502)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
 class ChannelRenameViewTests(TestCase):
     def test_get_returns_405(self):
         session = self.client.session
@@ -961,6 +1008,18 @@ class TimelineViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Turtle wall")
 
+    def test_missing_user_url_redirects_and_does_not_create_anonymous_settings(self):
+        s = auth_session()
+        del s["user_url"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
+        self.assertFalse(UserSettings.objects.filter(user_url="").exists())
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):
@@ -1016,3 +1075,546 @@ class SettingsViewTests(TestCase):
         self.client.post("/settings/", {"default_filter": "all"})
         us = UserSettings.objects.get(user_url="https://me.example/")
         self.assertFalse(us.expand_content)
+
+    def test_missing_user_url_redirects_and_does_not_create_anonymous_settings(self):
+        s = auth_session()
+        del s["user_url"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+
+        response = self.client.get("/settings/")
+
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
+        self.assertFalse(UserSettings.objects.filter(user_url="").exists())
+
+
+_CONFIG_WITH_MEDIA = {
+    "media-endpoint": "https://media.example/",
+    "syndicate-to": [{"uid": "https://twitter.com/", "name": "Twitter"}],
+}
+_CONFIG_EMPTY = {"syndicate-to": []}
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class NewPostViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    # --- GET ---
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_renders_form(self, _mock):
+        self._auth_session()
+        response = self.client.get("/new/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "new_post.html")
+        self.assertContains(response, "<form")
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_exposes_media_endpoint_flag(self, _mock):
+        self._auth_session()
+        response = self.client.get("/new/")
+        self.assertTrue(response.context["has_media_endpoint"])
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_exposes_syndication_targets(self, _mock):
+        self._auth_session()
+        response = self.client.get("/new/")
+        targets = response.context["syndicate_to"]
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0]["uid"], "https://twitter.com/")
+
+    def test_get_no_micropub_endpoint_returns_400(self):
+        s = auth_session()
+        del s["micropub_endpoint"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.get("/new/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_get_no_access_token_redirects_to_login(self):
+        # The auth middleware handles this before the view runs.
+        s = auth_session()
+        del s["access_token"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.get("/new/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    @patch("microsub_client.views.micropub.query_config", side_effect=micropub.MicropubError("fail"))
+    def test_get_config_failure_renders_form_without_extras(self, _mock):
+        self._auth_session()
+        response = self.client.get("/new/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_media_endpoint"])
+        self.assertEqual(response.context["syndicate_to"], [])
+
+    # --- POST ---
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_empty_content_returns_error(self, _mock):
+        self._auth_session()
+        response = self.client.post("/new/", {"content": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Content is required")
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_whitespace_content_returns_error(self, _mock):
+        self._auth_session()
+        response = self.client.post("/new/", {"content": "   "})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Content is required")
+
+    @patch("microsub_client.views.micropub.create_post", return_value="https://me.example/post/1")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_success_renders_success_with_url(self, _mock_config, _mock_create):
+        self._auth_session()
+        response = self.client.post("/new/", {"content": "Hello world"})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["success"])
+        self.assertEqual(response.context["result_url"], "https://me.example/post/1")
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_success_no_location_renders_success(self, _mock_config, _mock_create):
+        self._auth_session()
+        response = self.client.post("/new/", {"content": "Hello world"})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["success"])
+        self.assertEqual(response.context["result_url"], "")
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_with_name_passes_name(self, _mock_config, mock_create):
+        self._auth_session()
+        self.client.post("/new/", {"content": "Body", "name": "My Article"})
+        self.assertEqual(mock_create.call_args.kwargs["name"], "My Article")
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_with_tags_passes_category_list(self, _mock_config, mock_create):
+        self._auth_session()
+        self.client.post("/new/", {"content": "Tagged", "tags": "python,web,django"})
+        self.assertEqual(sorted(mock_create.call_args.kwargs["category"]), ["django", "python", "web"])
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_without_tags_passes_none_category(self, _mock_config, mock_create):
+        self._auth_session()
+        self.client.post("/new/", {"content": "No tags"})
+        self.assertIsNone(mock_create.call_args.kwargs["category"])
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_with_photos_passes_photo_list(self, _mock_config, mock_create):
+        self._auth_session()
+        self.client.post("/new/", {
+            "content": "Photo post",
+            "photo": ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+        })
+        self.assertEqual(
+            mock_create.call_args.kwargs["photo"],
+            ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+        )
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_with_location_passes_location(self, _mock_config, mock_create):
+        self._auth_session()
+        self.client.post("/new/", {"content": "Here I am", "location": "geo:37.123,-122.456"})
+        self.assertEqual(mock_create.call_args.kwargs["location"], "geo:37.123,-122.456")
+
+    @patch("microsub_client.views.micropub.create_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_with_syndicate_to_passes_list(self, _mock_config, mock_create):
+        self._auth_session()
+        self.client.post("/new/", {
+            "content": "Syndicated",
+            "syndicate_to": ["https://twitter.com/", "https://mastodon.social/"],
+        })
+        syndicate_to = mock_create.call_args.kwargs["syndicate_to"]
+        self.assertIn("https://twitter.com/", syndicate_to)
+        self.assertIn("https://mastodon.social/", syndicate_to)
+
+    @patch("microsub_client.views.micropub.create_post", side_effect=micropub.MicropubError("upstream fail"))
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_micropub_error_shows_error(self, _mock_config, _mock_create):
+        self._auth_session()
+        response = self.client.post("/new/", {"content": "Hello"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "upstream fail")
+        self.assertFalse(response.context.get("success", False))
+
+    def test_post_no_micropub_endpoint_returns_400(self):
+        s = auth_session()
+        del s["micropub_endpoint"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.post("/new/", {"content": "Hello"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_post_no_access_token_redirects_to_login(self):
+        # The auth middleware handles this before the view runs.
+        s = auth_session()
+        del s["access_token"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.post("/new/", {"content": "Hello"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class UploadMediaViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def _make_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile("photo.jpg", b"fake-image-data", content_type="image/jpeg")
+
+    def test_get_returns_405(self):
+        self._auth_session()
+        response = self.client.get("/api/micropub/media/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_no_micropub_endpoint_returns_400(self):
+        s = auth_session()
+        del s["micropub_endpoint"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.post("/api/micropub/media/", {"file": self._make_file()})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Micropub not available")
+
+    def test_no_access_token_redirects_to_login(self):
+        # The auth middleware handles this before the view runs.
+        s = auth_session()
+        del s["access_token"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.post("/api/micropub/media/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    def test_no_file_returns_400(self):
+        self._auth_session()
+        response = self.client.post("/api/micropub/media/")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "No file provided")
+
+    @patch("microsub_client.views.micropub.query_config", return_value={"syndicate-to": []})
+    def test_no_media_endpoint_returns_400(self, _mock):
+        self._auth_session()
+        response = self.client.post("/api/micropub/media/", {"file": self._make_file()})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("media endpoint", response.json()["error"].lower())
+
+    @patch("microsub_client.views.micropub.upload_media", return_value="https://media.example/photo.jpg")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_upload_success_returns_url(self, _mock_config, _mock_upload):
+        self._auth_session()
+        response = self.client.post("/api/micropub/media/", {"file": self._make_file()})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["url"], "https://media.example/photo.jpg")
+
+    @patch("microsub_client.views.micropub.upload_media", side_effect=micropub.MicropubError("upload failed"))
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_micropub_error_returns_502(self, _mock_config, _mock_upload):
+        self._auth_session()
+        response = self.client.post("/api/micropub/media/", {"file": self._make_file()})
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("upload failed", response.json()["error"])
+
+    @patch("microsub_client.views.image_utils.maybe_convert", side_effect=ValueError("Cannot decode image"))
+    def test_undecodable_image_returns_422(self, _mock_convert):
+        self._auth_session()
+        response = self.client.post("/api/micropub/media/", {"file": self._make_file()})
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Cannot decode image", response.json()["error"])
+
+    @patch("microsub_client.views.micropub.upload_media", return_value="https://media.example/photo.jpg")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    @patch("microsub_client.views.image_utils.maybe_convert")
+    def test_upload_calls_maybe_convert(self, mock_convert, _mock_config, _mock_upload):
+        """maybe_convert is called before forwarding the file."""
+        self._auth_session()
+        f = self._make_file()
+        mock_convert.return_value = f
+        self.client.post("/api/micropub/media/", {"file": f})
+        mock_convert.assert_called_once()
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class ConvertImageViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def _make_jpeg(self):
+        from PIL import Image
+        import io
+        buf = io.BytesIO()
+        Image.new("RGB", (4, 4), color=(200, 100, 50)).save(buf, format="JPEG")
+        size = buf.tell()
+        buf.seek(0)
+        return InMemoryUploadedFile(buf, None, "photo.jpg", "image/jpeg", size, None)
+
+    def _make_tiff(self):
+        from PIL import Image
+        import io
+        buf = io.BytesIO()
+        Image.new("RGB", (4, 4), color=(50, 100, 200)).save(buf, format="TIFF")
+        size = buf.tell()
+        buf.seek(0)
+        return InMemoryUploadedFile(buf, None, "photo.tiff", "image/tiff", size, None)
+
+    def _make_png(self):
+        from PIL import Image
+        import io
+        buf = io.BytesIO()
+        Image.new("RGB", (4, 4), color=(10, 20, 30)).save(buf, format="PNG")
+        size = buf.tell()
+        buf.seek(0)
+        return InMemoryUploadedFile(buf, None, "photo.png", "image/png", size, None)
+
+    def test_get_returns_405(self):
+        self._auth_session()
+        response = self.client.get("/api/image/convert/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_unauthenticated_returns_403(self):
+        # The auth middleware handles this before the view runs.
+        response = self.client.post("/api/image/convert/")
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
+
+    def test_no_file_returns_400(self):
+        self._auth_session()
+        response = self.client.post("/api/image/convert/")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "No file provided")
+
+    def test_jpeg_passthrough_returns_jpeg(self):
+        self._auth_session()
+        response = self.client.post("/api/image/convert/", {"file": self._make_jpeg()})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+
+    def test_tiff_converted_to_jpeg(self):
+        self._auth_session()
+        response = self.client.post("/api/image/convert/", {"file": self._make_tiff()})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertGreater(len(response.content), 0)
+
+    def test_undecodable_file_returns_422(self):
+        self._auth_session()
+        bad = SimpleUploadedFile("bad.tiff", b"not-an-image", content_type="image/tiff")
+        response = self.client.post("/api/image/convert/", {"file": bad})
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("error", response.json())
+
+    def test_png_passthrough_preserves_content_type(self):
+        self._auth_session()
+        response = self.client.post("/api/image/convert/", {"file": self._make_png()})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class ModerationViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def test_mute_requires_author_url(self):
+        self._auth_session()
+        response = self.client.post("/api/mute/", {})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("microsub_client.views.api.mute_user")
+    def test_mute_calls_api(self, mock_mute):
+        self._auth_session()
+        response = self.client.post("/api/mute/", {"author_url": "https://alice.example/", "channel": "main"})
+        self.assertEqual(response.status_code, 204)
+        mock_mute.assert_called_once_with(
+            "https://microsub.example/",
+            "test-token",
+            "https://alice.example/",
+            channel="main",
+        )
+
+    @patch("microsub_client.views.api.unmute_user")
+    def test_unmute_calls_api(self, mock_unmute):
+        self._auth_session()
+        response = self.client.post("/api/unmute/", {"author_url": "https://alice.example/", "channel": "main"})
+        self.assertEqual(response.status_code, 204)
+        mock_unmute.assert_called_once_with(
+            "https://microsub.example/",
+            "test-token",
+            "https://alice.example/",
+            channel="main",
+        )
+
+    @patch("microsub_client.views.api.block_user")
+    def test_block_calls_api(self, mock_block):
+        self._auth_session()
+        response = self.client.post("/api/block/", {"author_url": "https://alice.example/"})
+        self.assertEqual(response.status_code, 204)
+        mock_block.assert_called_once_with(
+            "https://microsub.example/",
+            "test-token",
+            "https://alice.example/",
+        )
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class DraftEndpointsTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def test_save_creates_draft(self):
+        self._auth_session()
+        response = self.client.post("/drafts/save/", {
+            "name": "Draft title",
+            "content": "Draft body",
+            "tags": "padd,v1",
+            "photo": ["https://img.example/a.jpg"],
+            "location": "geo:1,2",
+        })
+        self.assertEqual(response.status_code, 200)
+        draft = Draft.objects.get(user_url="https://me.example/")
+        self.assertEqual(draft.title, "Draft title")
+        self.assertEqual(draft.content, "Draft body")
+        self.assertContains(response, 'id="draft-id"')
+
+    def test_save_updates_existing_draft(self):
+        self._auth_session()
+        draft = Draft.objects.create(user_url="https://me.example/", title="Old", content="Old body")
+        response = self.client.post("/drafts/save/", {
+            "draft_id": str(draft.pk),
+            "name": "New",
+            "content": "New body",
+        })
+        self.assertEqual(response.status_code, 200)
+        draft.refresh_from_db()
+        self.assertEqual(draft.title, "New")
+        self.assertEqual(draft.content, "New body")
+
+    def test_delete_removes_draft(self):
+        self._auth_session()
+        draft = Draft.objects.create(user_url="https://me.example/", title="Delete me")
+        response = self.client.post(f"/drafts/{draft.pk}/delete/", {"draft_id": str(draft.pk)})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Draft.objects.filter(pk=draft.pk).exists())
+        self.assertContains(response, 'id="draft-id"')
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class OpmlViewsTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    @patch("microsub_client.views.api.get_follows", return_value={"items": [{"url": "https://feed.example/rss", "name": "Feed"}]})
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "main", "name": "Main"}])
+    def test_export_returns_opml_attachment(self, _mock_channels, _mock_follows):
+        self._auth_session()
+        response = self.client.get("/opml/export/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/xml; charset=utf-8")
+        self.assertIn("attachment; filename=", response["Content-Disposition"])
+        self.assertContains(response, "xmlUrl=\"https://feed.example/rss\"")
+
+    @patch("microsub_client.views.SafeET.parse", side_effect=DefusedXmlException("forbidden"))
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "main", "name": "Main"}])
+    def test_import_handles_defusedxml_exception(self, _mock_channels, _mock_parse):
+        self._auth_session()
+        opml = SimpleUploadedFile("subs.opml", b"<opml></opml>", content_type="text/xml")
+        response = self.client.post("/opml/import/", {"opml_file": opml, "fallback_channel": "main"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Could not parse OPML file")
+
+    @patch("microsub_client.views.api.follow_feed")
+    @patch("microsub_client.views.api.create_channel")
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "tech", "name": "Tech"}])
+    def test_import_nested_folders_flatten_to_top_level_channel(self, _mock_channels, _mock_create_channel, mock_follow):
+        self._auth_session()
+        opml_content = b"""<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Tech">
+      <outline text="Python">
+        <outline type="rss" xmlUrl="https://feeds.example/python.xml" />
+      </outline>
+    </outline>
+  </body>
+</opml>"""
+        opml = SimpleUploadedFile("nested.opml", opml_content, content_type="text/xml")
+        response = self.client.post("/opml/import/", {"opml_file": opml})
+        self.assertEqual(response.status_code, 200)
+        _mock_create_channel.assert_not_called()
+        mock_follow.assert_called_once_with(
+            "https://microsub.example/",
+            "test-token",
+            "tech",
+            "https://feeds.example/python.xml",
+        )
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class DiscoverViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "main", "name": "Main"}])
+    def test_hot_sort_orders_by_total_interactions(self, _mock_channels):
+        self._auth_session()
+        e1 = CachedEntry.objects.create(url="https://post.example/1", title="One")
+        e2 = CachedEntry.objects.create(url="https://post.example/2", title="Two")
+        Interaction.objects.create(user_url="https://a.example/", entry=e1, kind="like")
+        Interaction.objects.create(user_url="https://b.example/", entry=e1, kind="reply")
+        Interaction.objects.create(user_url="https://a.example/", entry=e2, kind="like")
+        response = self.client.get("/discover/?sort=hot")
+        self.assertEqual(response.status_code, 200)
+        page_entries = list(response.context["entries"].object_list)
+        self.assertEqual(page_entries[0].url, "https://post.example/1")
+        self.assertEqual(page_entries[1].url, "https://post.example/2")
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class HarvestSettingsTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def test_settings_can_enable_harvest_toggle(self):
+        self._auth_session()
+        response = self.client.post("/settings/", {
+            "default_filter": "all",
+            "mark_read_behavior": "explicit",
+            "show_gardn_harvest": "on",
+        })
+        self.assertEqual(response.status_code, 302)
+        settings_obj = UserSettings.objects.get(user_url="https://me.example/")
+        self.assertTrue(settings_obj.show_gardn_harvest)
