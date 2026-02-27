@@ -164,7 +164,11 @@
         <div class="photo-editor-title">Edit Photo</div>
         <div class="photo-editor-workspace">
           <div class="photo-editor-canvas-wrap">
-            <canvas id="photo-editor-canvas" role="img" aria-label="Photo editor preview"></canvas>
+            <div class="photo-editor-canvas-stack">
+              <canvas id="photo-editor-canvas" role="img" aria-label="Photo editor preview"></canvas>
+              <canvas id="photo-editor-crop-canvas" aria-hidden="true"
+                      style="position:absolute;top:0;left:0;pointer-events:none"></canvas>
+            </div>
             <div class="photo-editor-crop-hint lcars-hidden">Drag inside to move &middot; drag outside to redraw</div>
             <div class="photo-editor-processing lcars-hidden" id="photo-editor-processing" aria-live="polite" aria-label="Processing">
               <div class="lcars-progress-bar lcars-progress-bar--lg"><div class="lcars-scan-line"></div></div>
@@ -251,6 +255,30 @@
                        min="-90" max="90" step="1" value="0">
                 <span class="photo-editor-adjust-val" id="adj-hue-val">0&deg;</span>
               </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Highlights</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-highlights"
+                       min="-1" max="1" step="0.01" value="0">
+                <span class="photo-editor-adjust-val" id="adj-highlights-val">0</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Shadows</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-shadows"
+                       min="-1" max="1" step="0.01" value="0">
+                <span class="photo-editor-adjust-val" id="adj-shadows-val">0</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Vignette</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-vignette"
+                       min="0" max="1" step="0.01" value="0">
+                <span class="photo-editor-adjust-val" id="adj-vignette-val">0%</span>
+              </div>
+              <div class="photo-editor-adjust-row">
+                <span class="photo-editor-adjust-label">Sharpness</span>
+                <input type="range" class="photo-editor-adjust-slider" id="adj-sharpness"
+                       min="0" max="1" step="0.05" value="0">
+                <span class="photo-editor-adjust-val" id="adj-sharpness-val">0%</span>
+              </div>
             </div>
             <div class="photo-editor-section-label">Crop</div>
             <div class="photo-editor-crop-presets">
@@ -300,5 +328,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{% static 'js/photo-gl.js' %}"></script>
 <script src="{% static 'js/new-post.js' %}"></script>
 {% endblock %}

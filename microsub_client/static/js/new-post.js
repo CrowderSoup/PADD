@@ -128,7 +128,8 @@
       dragging: false, dragStart: {x: 0, y: 0}, dragOrigin: null,
       _objectUrl: null, _cropUrl: null, _rotateUrl: null, _rafId: 0,
       adjustMode: false,
-      adjustments: { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0 },
+      adjustments: { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0,
+                     highlights: 0, shadows: 0, vignette: 0, sharpness: 0 },
       rotateAngle: 0,
       cwAngle: 0
     };
@@ -151,6 +152,53 @@
       chrome: 'contrast(1.28) saturate(1.95) brightness(1.05) hue-rotate(3deg)'
     };
 
+    // GL uniform equivalents of FILTERS for the WebGL rendering path.
+    // hue values are in degrees; getUniformsFromState() converts to radians.
+    // matte: (col-0.5)*0.80+0.5 = 0.80*col+0.10 matches the SVG feComponentTransfer.
+    var FILTER_UNIFORMS = {
+      none:   { brightness:1,    contrast:1,    saturation:1,    sepia:0,    hue:0,   opacity:1   },
+      vivid:  { brightness:1,    contrast:1.16, saturation:1.32, sepia:0,    hue:0,   opacity:1   },
+      warm:   { brightness:1.03, contrast:1,    saturation:1.15, sepia:0.35, hue:0,   opacity:1   },
+      cool:   { brightness:1.01, contrast:1,    saturation:0.92, sepia:0,    hue:12,  opacity:1   },
+      bw:     { brightness:1,    contrast:1,    saturation:0,    sepia:0,    hue:0,   opacity:1   },
+      fade:   { brightness:1.08, contrast:0.92, saturation:0.88, sepia:0,    hue:0,   opacity:0.9 },
+      noir:   { brightness:0.9,  contrast:1.5,  saturation:0,    sepia:0,    hue:0,   opacity:1   },
+      dusk:   { brightness:0.94, contrast:1.08, saturation:1.18, sepia:0.38, hue:-25, opacity:1   },
+      matte:  { brightness:1,    contrast:0.80, saturation:0.78, sepia:0,    hue:0,   opacity:1   },
+      chrome: { brightness:1.05, contrast:1.28, saturation:1.95, sepia:0,    hue:3,   opacity:1   }
+    };
+
+    function getUniformsFromState() {
+      if (editorState.adjustMode) {
+        var a = editorState.adjustments;
+        return {
+          brightness: a.brightness,
+          contrast:   a.contrast,
+          saturation: a.saturation,
+          sepia:      a.warmth,
+          hue:        a.hue * Math.PI / 180,
+          opacity:    1.0,
+          highlights: a.highlights,
+          shadows:    a.shadows,
+          vignette:   a.vignette,
+          sharpness:  a.sharpness
+        };
+      }
+      var f = FILTER_UNIFORMS[editorState.filter] || FILTER_UNIFORMS.none;
+      return {
+        brightness: f.brightness,
+        contrast:   f.contrast,
+        saturation: f.saturation,
+        sepia:      f.sepia,
+        hue:        f.hue * Math.PI / 180,
+        opacity:    f.opacity,
+        highlights: 0,
+        shadows:    0,
+        vignette:   0,
+        sharpness:  0
+      };
+    }
+
     function buildFilterString() {
       if (editorState.adjustMode) {
         var a = editorState.adjustments;
@@ -170,9 +218,12 @@
         if (val === 0) return '0\u00b0';
         return (val > 0 ? '+' : '') + Math.round(val) + '\u00b0';
       }
-      if (key === 'warmth') {
+      if (key === 'warmth' || key === 'highlights' || key === 'shadows') {
         var pct = Math.round(val * 100);
         return pct === 0 ? '0' : (pct > 0 ? '+' : '') + pct + '%';
+      }
+      if (key === 'vignette' || key === 'sharpness') {
+        return Math.round(val * 100) + '%';
       }
       var pct = Math.round((val - 1) * 100);
       return pct === 0 ? '0' : (pct > 0 ? '+' : '') + pct + '%';
@@ -180,8 +231,11 @@
 
     var overlay = document.getElementById('photo-editor-overlay');
     var canvas = document.getElementById('photo-editor-canvas');
-    var ctx = canvas ? canvas.getContext('2d') : null;
-    var canvasWrap = canvas ? canvas.parentElement : null;
+    var glRenderer = canvas ? createPhotoGL(canvas) : null;
+    var ctx = (!glRenderer && canvas) ? canvas.getContext('2d') : null;
+    var cropCanvas = document.getElementById('photo-editor-crop-canvas');
+    var cropCtx = cropCanvas ? cropCanvas.getContext('2d') : null;
+    var canvasWrap = canvas ? canvas.closest('.photo-editor-canvas-wrap') : null;
 
     function getCanvasCoords(e) {
       var rect = canvas.getBoundingClientRect();
@@ -201,50 +255,99 @@
       if (h > maxH) { h = maxH; w = h * ratio; }
       canvas.width = Math.round(w);
       canvas.height = Math.round(h);
+      if (cropCanvas) { cropCanvas.width = canvas.width; cropCanvas.height = canvas.height; }
     }
 
     function renderCanvas() {
-      if (!ctx || !editorState.image) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      var totalAngle = editorState.cwAngle + editorState.rotateAngle;
-      var isSwapped = (editorState.cwAngle % 180 !== 0);
-      if (totalAngle) {
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate(totalAngle * Math.PI / 180);
-        ctx.filter = buildFilterString();
-        if (isSwapped) {
-          ctx.drawImage(editorState.image, -canvas.height / 2, -canvas.width / 2, canvas.height, canvas.width);
-        } else {
-          ctx.drawImage(editorState.image, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+      if (!editorState.image) return;
+      if (glRenderer) {
+        var totalAngle = editorState.cwAngle + editorState.rotateAngle;
+        glRenderer.render(editorState.image, getUniformsFromState(), totalAngle);
+        // Draw crop overlay on the separate 2D canvas (can't mix GL + 2D on same element)
+        if (cropCtx) {
+          cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+          if (editorState.cropRect) {
+            var r = editorState.cropRect;
+            cropCtx.fillStyle = 'rgba(0,0,0,0.45)';
+            cropCtx.fillRect(0, 0, cropCanvas.width, r.y);
+            cropCtx.fillRect(0, r.y + r.h, cropCanvas.width, cropCanvas.height - r.y - r.h);
+            cropCtx.fillRect(0, r.y, r.x, r.h);
+            cropCtx.fillRect(r.x + r.w, r.y, cropCanvas.width - r.x - r.w, r.h);
+            cropCtx.strokeStyle = '#f89a25';
+            cropCtx.lineWidth = 2;
+            cropCtx.strokeRect(r.x, r.y, r.w, r.h);
+          }
         }
-        ctx.filter = 'none';
-        ctx.restore();
       } else {
-        ctx.filter = buildFilterString();
-        ctx.drawImage(editorState.image, 0, 0, canvas.width, canvas.height);
-        ctx.filter = 'none';
-      }
-      if (editorState.cropRect) {
-        var r = editorState.cropRect;
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.fillRect(0, 0, canvas.width, r.y);
-        ctx.fillRect(0, r.y + r.h, canvas.width, canvas.height - r.y - r.h);
-        ctx.fillRect(0, r.y, r.x, r.h);
-        ctx.fillRect(r.x + r.w, r.y, canvas.width - r.x - r.w, r.h);
-        ctx.strokeStyle = '#f89a25';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        // 2D fallback (WebGL unavailable)
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        var totalAngle = editorState.cwAngle + editorState.rotateAngle;
+        var isSwapped = (editorState.cwAngle % 180 !== 0);
+        if (totalAngle) {
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(totalAngle * Math.PI / 180);
+          ctx.filter = buildFilterString();
+          if (isSwapped) {
+            ctx.drawImage(editorState.image, -canvas.height / 2, -canvas.width / 2, canvas.height, canvas.width);
+          } else {
+            ctx.drawImage(editorState.image, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+          }
+          ctx.filter = 'none';
+          ctx.restore();
+        } else {
+          ctx.filter = buildFilterString();
+          ctx.drawImage(editorState.image, 0, 0, canvas.width, canvas.height);
+          ctx.filter = 'none';
+        }
+        if (editorState.cropRect) {
+          var r = editorState.cropRect;
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.fillRect(0, 0, canvas.width, r.y);
+          ctx.fillRect(0, r.y + r.h, canvas.width, canvas.height - r.y - r.h);
+          ctx.fillRect(0, r.y, r.x, r.h);
+          ctx.fillRect(r.x + r.w, r.y, canvas.width - r.x - r.w, r.h);
+          ctx.strokeStyle = '#f89a25';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+        }
       }
     }
 
     function renderFilterPreviews() {
       if (!overlay || !editorState.image) return;
-      // Render one thumbnail per animation frame to avoid blocking the main thread
       var btns = Array.from(overlay.querySelectorAll('.photo-editor-filter-btn'));
-      var idx = 0;
       var img = editorState.image;
-      function renderNext() {
+      var idx = 0;
+
+      if (glRenderer) {
+        // GL path: one shared offscreen GL canvas stamps into each 48×48 2D preview canvas
+        var glPrev = createPhotoGL(48, 48);
+        if (glPrev) {
+          var renderGLNext = function() {
+            if (idx >= btns.length || editorState.image !== img) { glPrev.destroy(); return; }
+            var btn = btns[idx++];
+            var pc = btn.querySelector('canvas');
+            if (pc) {
+              var f = FILTER_UNIFORMS[btn.dataset.filter] || FILTER_UNIFORMS.none;
+              glPrev.render(img, {
+                brightness: f.brightness, contrast: f.contrast, saturation: f.saturation,
+                sepia: f.sepia, hue: f.hue * Math.PI / 180, opacity: f.opacity
+              }, 0);
+              var pctx = pc.getContext('2d');
+              pctx.clearRect(0, 0, 48, 48);
+              pctx.drawImage(glPrev.canvas, 0, 0);
+            }
+            requestAnimationFrame(renderGLNext);
+          };
+          requestAnimationFrame(renderGLNext);
+          return;
+        }
+      }
+
+      // 2D fallback
+      var renderNext = function() {
         if (idx >= btns.length || editorState.image !== img) return;
         var btn = btns[idx++];
         var pc = btn.querySelector('canvas');
@@ -257,7 +360,7 @@
           pctx.filter = 'none';
         }
         requestAnimationFrame(renderNext);
-      }
+      };
       requestAnimationFrame(renderNext);
     }
 
@@ -489,6 +592,51 @@
         bakeRotation(function() { buildBlob(callback); });
         return;
       }
+
+      if (glRenderer) {
+        // GL export: temporarily resize main canvas to full resolution, render, then restore
+        var src = editorState.image;
+        var cropR = editorState.cropRect;
+        var uniforms = getUniformsFromState();
+        var targetW, targetH, uvOffset, uvScale;
+
+        if (cropR) {
+          // UV offset/scale select the crop region in texture space.
+          // Y is flipped in the shader (1.0 - uv.y), so offset.y starts at crop bottom.
+          var uvOffsetY = 1.0 - (cropR.y + cropR.h) / canvas.height;
+          uvOffset = [cropR.x / canvas.width, uvOffsetY];
+          uvScale  = [cropR.w / canvas.width, cropR.h / canvas.height];
+          var scaleX = src.naturalWidth / canvas.width;
+          var scaleY = src.naturalHeight / canvas.height;
+          targetW = Math.round(cropR.w * scaleX);
+          targetH = Math.round(cropR.h * scaleY);
+        } else {
+          targetW = src.naturalWidth;
+          targetH = src.naturalHeight;
+          uvOffset = [0.0, 0.0];
+          uvScale  = [1.0, 1.0];
+        }
+
+        var dispW = canvas.width, dispH = canvas.height;
+        canvas.width = targetW;
+        canvas.height = targetH;
+        glRenderer.render(src, uniforms, 0, uvOffset, uvScale);
+
+        var mimeType = (editorState.file && editorState.file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+        canvas.toBlob(function(blob) {
+          // Restore display canvas and re-render the preview
+          canvas.width = dispW;
+          canvas.height = dispH;
+          glRenderer.render(
+            editorState.image, getUniformsFromState(),
+            editorState.cwAngle + editorState.rotateAngle
+          );
+          callback(blob);
+        }, mimeType, 0.92);
+        return;
+      }
+
+      // 2D fallback
       var off = document.createElement('canvas');
       var src = editorState.image;
       var cropR = editorState.cropRect;
@@ -525,7 +673,7 @@
     }
 
     function openEditor(file) {
-      if (!overlay || !canvas || !ctx) return;
+      if (!overlay || !canvas || (!glRenderer && !ctx)) return;
       editorState.file = file;
       editorState.filter = 'none';
       editorState.cropActive = false;
@@ -564,8 +712,10 @@
       if (adjustPanelEl) adjustPanelEl.classList.add('lcars-hidden');
       var modeLabelEl = document.getElementById('photo-editor-mode-label');
       if (modeLabelEl) modeLabelEl.textContent = 'Filters';
-      var adjDefaults = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0 };
-      ['brightness', 'contrast', 'saturation', 'warmth', 'hue'].forEach(function(key) {
+      var adjDefaults = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0,
+                          highlights: 0, shadows: 0, vignette: 0, sharpness: 0 };
+      ['brightness', 'contrast', 'saturation', 'warmth', 'hue',
+       'highlights', 'shadows', 'vignette', 'sharpness'].forEach(function(key) {
         var sliderEl = document.getElementById('adj-' + key);
         if (sliderEl) sliderEl.value = adjDefaults[key];
         var valEl = document.getElementById('adj-' + key + '-val');
@@ -591,6 +741,7 @@
       if (!overlay) return;
       setEditorBusy(false);
       overlay.classList.add('lcars-hidden');
+      if (cropCtx) cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
       if (editorState._objectUrl) {
         URL.revokeObjectURL(editorState._objectUrl);
         editorState._objectUrl = null;
@@ -618,7 +769,8 @@
       editorState.rotateAngle = 0;
       editorState.cwAngle = 0;
       editorState.adjustMode = false;
-      editorState.adjustments = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0 };
+      editorState.adjustments = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0,
+                                   highlights: 0, shadows: 0, vignette: 0, sharpness: 0 };
     }
 
     // Attach all editor event listeners once at init
@@ -747,7 +899,8 @@
         });
       }
 
-      var adjDefaults = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0 };
+      var adjDefaults = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0,
+                          highlights: 0, shadows: 0, vignette: 0, sharpness: 0 };
 
       if (adjustPanel) {
         adjustPanel.addEventListener('input', function(e) {
