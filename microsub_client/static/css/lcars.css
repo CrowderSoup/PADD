@@ -3249,6 +3249,10 @@ body.lcars-modal-open {
   justify-content: center;
 }
 
+.photo-editor-canvas-stack {
+  position: relative;
+}
+
 .photo-editor-canvas-wrap canvas {
   display: block;
   max-width: 100%;
@@ -3581,7 +3585,7 @@ body.lcars-modal-open {
   color: #fff;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
   .photo-editor-workspace {
     flex-direction: column;
   }
@@ -3594,6 +3598,7 @@ body.lcars-modal-open {
 
   .photo-editor-controls {
     width: 100%;
+    max-width: none;
   }
 }
 
