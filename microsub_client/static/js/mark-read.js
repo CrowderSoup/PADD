@@ -88,11 +88,11 @@ document.addEventListener('htmx:afterRequest', function(evt) {
     if (!article) return;
     var readAction = article.querySelector('.lcars-entry-read-action');
     if (readAction) {
-      htmx.ajax('POST', readAction.dataset.markReadUrl, {
-        values: { channel: readAction.dataset.channel, entry: readAction.dataset.entry },
-        target: readAction,
-        swap: 'innerHTML',
-      });
+      _markReadQueue.channel = readAction.dataset.channel;
+      _markReadQueue.url = readAction.dataset.markReadUrl;
+      _markReadQueue.entries.push(readAction.dataset.entry);
+      if (_markReadQueue.timer) clearTimeout(_markReadQueue.timer);
+      _markReadQueue.timer = setTimeout(_flushMarkReadQueue, 0);
     }
   }
 });
