@@ -2,9 +2,10 @@
       hx-post="{% url 'micropub-reply' %}"
       hx-vals='{"entry_url": "{{ entry_url|escapejs }}"}'
       hx-swap="none"
-      hx-on::config-request="if(this._easymde){event.detail.parameters.content=this._easymde.value()}"
-      hx-on::before-request="if(!event.detail.requestConfig.parameters.content||!event.detail.requestConfig.parameters.content.trim()){event.preventDefault();this.classList.add('lcars-reply-error');return}"
-      hx-on::after-request="if(event.detail.successful){var c=this.closest('.lcars-entry-content'),t=document.createElement('div');t.innerHTML=event.detail.xhr.responseText;var btn=t.querySelector('[data-reply-button]'),sent=t.querySelector('[data-reply-sent]');c.querySelector('.lcars-reply-wrapper').innerHTML=btn.innerHTML;c.querySelector('.lcars-interactions').insertAdjacentHTML('afterend',sent.innerHTML);this.remove()}else{var err=this.querySelector('.lcars-reply-error-msg');if(!err){err=document.createElement('div');err.className='lcars-reply-error-msg';this.insertBefore(err,this.querySelector('button'))}err.textContent=event.detail.xhr.responseText||'Something went wrong'}">
+      hx-disabled-elt="find button[type=submit]"
+      hx-on::config-request="replyFormConfigRequest(this, event)"
+      hx-on::before-request="replyFormBeforeRequest(this, event)"
+      hx-on::after-request="replyFormAfterRequest(this, event)">
   <textarea name="content" class="lcars-reply-input"
             placeholder="Write a reply..." rows="3"></textarea>
   <button type="submit" class="lcars-button lcars-button-gold">Send Reply</button>
