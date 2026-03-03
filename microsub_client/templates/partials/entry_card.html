@@ -53,9 +53,10 @@
           <div class="lcars-entry-read-action"
                hx-post="{% url 'mark-read' %}"
                hx-vals='{"channel": "{{ channel_uid|escapejs }}", "entry": "{{ entry.entry_id|default:entry.url|escapejs }}"}'
-               hx-swap="innerHTML"
+               hx-swap="outerHTML"
                hx-target="this"
                data-mark-read-url="{% url 'mark-read' %}"
+               data-mark-unread-url="{% url 'mark-unread' %}"
                data-channel="{{ channel_uid }}"
                data-entry="{{ entry.entry_id|default:entry.url }}"
                data-entry-read="{{ entry.entry_id|default:entry.url }}">

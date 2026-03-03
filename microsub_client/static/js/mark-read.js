@@ -31,7 +31,20 @@ function _flushMarkReadQueue() {
   }).then(function(html) {
     entries.forEach(function(eid) {
       var el = document.querySelector('[data-entry-read="' + CSS.escape(eid) + '"]');
-      if (el) el.innerHTML = '<span class="lcars-read-status lcars-read">Read</span>';
+      if (el) {
+        var parent = el.parentElement;
+        var markUnreadUrl = el.dataset.markUnreadUrl;
+        var ch = el.dataset.channel;
+        var entry = el.dataset.entry;
+        el.outerHTML = '<div class="lcars-entry-read-action"' +
+          ' hx-post="' + markUnreadUrl + '"' +
+          ' hx-vals=\'{"channel": "' + ch.replace(/"/g, '\\"') + '", "entry": "' + entry.replace(/"/g, '\\"') + '"}\'' +
+          ' hx-swap="outerHTML"' +
+          ' hx-target="this">' +
+          '<span class="lcars-read-status lcars-read">Read</span>' +
+          '</div>';
+        if (parent) htmx.process(parent);
+      }
     });
     // Process OOB swaps (channel nav unread count update)
     var tmp = document.createElement('div');
@@ -84,7 +97,8 @@ function initMarkReadBehavior(root) {
       });
     }, { threshold: 0 });
 
-    timeline.querySelectorAll('.lcars-entry-read-action').forEach(function(el) {
+    timeline.querySelectorAll('.lcars-entry-read-action:not([data-observed])').forEach(function(el) {
+      el.dataset.observed = '1';
       observer.observe(el);
     });
   }

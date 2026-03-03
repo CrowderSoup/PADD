@@ -31,7 +31,12 @@ function startChannelRename(btn, uid, currentName) {
   input.focus();
   input.select();
 
+  var cancelled = false;
+
   function submitRename() {
+    if (cancelled) return;
+    cancelled = true;
+    input.removeEventListener('blur', submitRename);
     var newName = input.value.trim();
     if (newName && newName !== currentName) {
       htmx.ajax('POST', window.PADD_URLS.channelRename, {
@@ -46,9 +51,28 @@ function startChannelRename(btn, uid, currentName) {
 
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
-    if (e.key === 'Escape') { nameEl.textContent = oldText; }
+    if (e.key === 'Escape') {
+      cancelled = true;
+      input.removeEventListener('blur', submitRename);
+      nameEl.textContent = oldText;
+      btn.focus();
+    }
   });
   input.addEventListener('blur', submitRename);
+}
+
+/**
+ * Resets and hides the add-channel form on successful submission.
+ *
+ * @param {HTMLFormElement} form - The add-channel form element.
+ * @param {CustomEvent} event - The htmx:afterRequest event.
+ */
+function channelAddFormAfterRequest(form, event) {
+  if (event.detail.successful) {
+    form.reset();
+    form.classList.add('lcars-hidden');
+    form.previousElementSibling.classList.remove('lcars-hidden');
+  }
 }
 
 // Refresh visible timeline after successful "Mark as read" channel action.

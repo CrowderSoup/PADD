@@ -1,9 +1,10 @@
-{% if entries|length == 1 %}<span class="lcars-read-status lcars-read">Read</span>{% endif %}
-{% for entry_id in entries %}{% if entries|length > 1 %}
-<div id="read-status-{{ forloop.counter0 }}" hx-swap-oob="innerHTML:[data-entry-read='{{ entry_id }}']">
+<div class="lcars-entry-read-action"
+     hx-post="{% url 'mark-unread' %}"
+     hx-vals='{"channel": "{{ channel_uid|escapejs }}", "entry": "{{ entries.0|escapejs }}"}'
+     hx-swap="outerHTML"
+     hx-target="this">
   <span class="lcars-read-status lcars-read">Read</span>
 </div>
-{% endif %}{% endfor %}
 {% if channels %}
 <nav id="channel-nav" hx-swap-oob="innerHTML:#channel-nav">
 {% include "partials/channel_list.html" %}
