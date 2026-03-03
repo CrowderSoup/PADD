@@ -37,8 +37,21 @@ function _flushMarkReadQueue() {
     var tmp = document.createElement('div');
     tmp.innerHTML = html;
     tmp.querySelectorAll('[hx-swap-oob]').forEach(function(oob) {
-      document.body.appendChild(oob);
-      htmx.process(oob);
+      var oobVal = oob.getAttribute('hx-swap-oob');
+      var match = oobVal.match(/^(\w+):(.+)$/);
+      if (match) {
+        var swapStyle = match[1];
+        var selector = match[2];
+        var target = document.querySelector(selector);
+        if (target) {
+          if (swapStyle === 'innerHTML') {
+            target.innerHTML = oob.innerHTML;
+            htmx.process(target);
+          } else if (swapStyle === 'outerHTML') {
+            target.outerHTML = oob.outerHTML;
+          }
+        }
+      }
     });
   });
 }
