@@ -902,6 +902,18 @@ class FeedUnfollowViewTests(TestCase):
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class IndexViewTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self._create_channel_patcher = patch(
+            "microsub_client.views.api.create_channel",
+            return_value={"uid": "notifications", "name": "Notifications"},
+        )
+        self.mock_create_channel = self._create_channel_patcher.start()
+
+    def tearDown(self):
+        self._create_channel_patcher.stop()
+        super().tearDown()
+
     @patch("microsub_client.views.api.get_channels", return_value=[
         {"uid": "home", "name": "Home"},
     ])
@@ -930,6 +942,16 @@ class IndexViewTests(TestCase):
         response = self.client.get("/app/")
         self.assertRedirects(response, "/login/", fetch_redirect_response=False)
 
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications"},
+    ])
+    def test_only_notifications_redirects_to_notifications(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/app/")
+        self.assertRedirects(response, "/channel/notifications/", fetch_redirect_response=False)
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class LandingViewTests(TestCase):
@@ -949,6 +971,18 @@ class LandingViewTests(TestCase):
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class TimelineViewTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self._create_channel_patcher = patch(
+            "microsub_client.views.api.create_channel",
+            return_value={"uid": "notifications", "name": "Notifications"},
+        )
+        self.mock_create_channel = self._create_channel_patcher.start()
+
+    def tearDown(self):
+        self._create_channel_patcher.stop()
+        super().tearDown()
+
     @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
     @patch("microsub_client.views.api.get_channels", return_value=[
         {"uid": "home", "name": "Home"},
@@ -1020,9 +1054,67 @@ class TimelineViewTests(TestCase):
         self.assertRedirects(response, "/login/", fetch_redirect_response=False)
         self.assertFalse(UserSettings.objects.filter(user_url="").exists())
 
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_creates_notifications_channel_when_missing(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.get("/channel/home/")
+        self.mock_create_channel.assert_called_with(
+            "https://microsub.example/", "test-token", "Notifications"
+        )
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications", "unread": 0},
+    ])
+    def test_notifications_defaults_to_all_when_no_unread(self, _mock_ch, mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.get("/channel/notifications/")
+        self.assertEqual(mock_tl.call_args.kwargs["is_read"], None)
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications", "unread": 3},
+    ])
+    def test_notifications_defaults_to_unread_when_unread_exists(self, _mock_ch, mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.get("/channel/notifications/")
+        self.assertEqual(mock_tl.call_args.kwargs["is_read"], False)
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications", "unread": 2},
+    ])
+    def test_notifications_all_toggle_works(self, _mock_ch, mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        self.client.get("/channel/notifications/?unread=0")
+        self.assertEqual(mock_tl.call_args.kwargs["is_read"], None)
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self._create_channel_patcher = patch(
+            "microsub_client.views.api.create_channel",
+            return_value={"uid": "notifications", "name": "Notifications"},
+        )
+        self.mock_create_channel = self._create_channel_patcher.start()
+
+    def tearDown(self):
+        self._create_channel_patcher.stop()
+        super().tearDown()
+
     @patch("microsub_client.views.api.get_channels", return_value=[])
     def test_renders_settings(self, _mock):
         session = self.client.session
@@ -1581,6 +1673,18 @@ class OpmlViewsTests(TestCase):
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class DiscoverViewTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self._create_channel_patcher = patch(
+            "microsub_client.views.api.create_channel",
+            return_value={"uid": "notifications", "name": "Notifications"},
+        )
+        self.mock_create_channel = self._create_channel_patcher.start()
+
+    def tearDown(self):
+        self._create_channel_patcher.stop()
+        super().tearDown()
+
     def _auth_session(self):
         session = self.client.session
         session.update(auth_session())
@@ -1599,6 +1703,42 @@ class DiscoverViewTests(TestCase):
         page_entries = list(response.context["entries"].object_list)
         self.assertEqual(page_entries[0].url, "https://post.example/1")
         self.assertEqual(page_entries[1].url, "https://post.example/2")
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class NotificationsPreviewViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [
+            {"_id": "1", "name": "One", "_is_read": False},
+            {"_id": "2", "name": "Two", "_is_read": True},
+        ],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications", "unread": 2},
+    ])
+    def test_preview_uses_unread_filter_when_unread_exists(self, _mock_ch, mock_tl):
+        self._auth_session()
+        response = self.client.get("/api/notifications/preview/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "View All")
+        self.assertEqual(mock_tl.call_args.kwargs["is_read"], False)
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications", "unread": 0},
+    ])
+    def test_preview_uses_all_filter_when_no_unread(self, _mock_ch, mock_tl):
+        self._auth_session()
+        response = self.client.get("/api/notifications/preview/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recent Notifications")
+        self.assertEqual(mock_tl.call_args.kwargs["is_read"], None)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)

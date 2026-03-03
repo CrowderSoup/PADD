@@ -35,6 +35,15 @@
           <img src="{% static 'wordmark.svg' %}"/>
         </a>
         {% if request.session.user_url %}
+          <div class="lcars-header-notifications-wrap" id="header-notifications-wrap">
+            <div id="header-notifications-button">
+              {% include "partials/notifications_button.html" %}
+            </div>
+            <div id="header-notifications-preview"
+                 class="lcars-notifications-preview lcars-hidden"
+                 data-loaded="0"
+                 data-url="{% url 'notifications-preview' %}"></div>
+          </div>
           <div class="lcars-user-menu">
             <button class="lcars-user-trigger" onclick="this.parentElement.classList.toggle('lcars-user-menu-open')">
               {% if request.session.user_photo %}

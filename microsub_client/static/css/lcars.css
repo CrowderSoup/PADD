@@ -156,6 +156,153 @@ body {
   background: rgba(248, 154, 37, 0.1);
 }
 
+.lcars-header-notifications-wrap {
+  position: relative;
+}
+
+.lcars-header-notifications {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: var(--lcars-radius);
+  border: 1px solid var(--lcars-border);
+  color: var(--lcars-text-muted);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  transition: all var(--lcars-transition);
+  font-family: var(--lcars-font);
+  background: transparent;
+  cursor: pointer;
+}
+
+.lcars-header-notifications:hover {
+  color: var(--lcars-text);
+  border-color: rgba(248, 154, 37, 0.35);
+  background: rgba(248, 154, 37, 0.08);
+}
+
+.lcars-header-notifications-active {
+  color: var(--lcars-orange);
+  border-color: rgba(248, 154, 37, 0.45);
+  background: linear-gradient(
+    120deg,
+    rgba(248, 154, 37, 0.2),
+    rgba(248, 154, 37, 0.08)
+  );
+  box-shadow: inset 0 0 0 1px rgba(248, 154, 37, 0.2);
+}
+
+.lcars-header-notifications-badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(248, 154, 37, 0.26);
+  color: var(--lcars-orange);
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  box-shadow: 0 0 8px rgba(248, 154, 37, 0.25);
+}
+
+.lcars-notifications-preview {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  z-index: 220;
+}
+
+.lcars-notifications-preview-card {
+  border: 1px solid var(--lcars-border);
+  border-radius: var(--lcars-radius-sm);
+  background: linear-gradient(
+    180deg,
+    rgba(8, 11, 20, 0.98),
+    rgba(9, 14, 24, 0.98)
+  );
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  padding: 8px;
+}
+
+.lcars-notifications-preview-header {
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid var(--lcars-border);
+}
+
+.lcars-notifications-preview-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: 6px 0 8px;
+}
+
+.lcars-notifications-preview-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--lcars-text);
+  border: 1px solid transparent;
+  transition: all var(--lcars-transition);
+}
+
+.lcars-notifications-preview-item:hover {
+  border-color: rgba(248, 154, 37, 0.32);
+  background: rgba(248, 154, 37, 0.08);
+}
+
+.lcars-notifications-preview-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.lcars-notifications-preview-status.is-unread {
+  background: var(--lcars-orange);
+  box-shadow: 0 0 8px rgba(248, 154, 37, 0.55);
+}
+
+.lcars-notifications-preview-status.is-read {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.lcars-notifications-preview-content {
+  min-width: 0;
+}
+
+.lcars-notifications-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lcars-text);
+  margin-bottom: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.lcars-notifications-preview-meta {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--lcars-text-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.lcars-notifications-view-all {
+  width: 100%;
+  justify-content: center;
+}
+
 /* ========== Body ========== */
 
 .lcars-body {
@@ -401,6 +548,15 @@ body {
 
 .lcars-timeline {
   max-width: 800px;
+}
+
+.lcars-notifications-view .lcars-channel-title::before {
+  background: var(--lcars-gold);
+  box-shadow: 0 0 10px rgba(246, 203, 86, 0.5);
+}
+
+.lcars-notifications-view .lcars-entry {
+  border-left: 3px solid rgba(246, 203, 86, 0.45);
 }
 
 /* ========== Entry Cards ========== */
@@ -1815,6 +1971,7 @@ body.lcars-modal-open {
 
 .lcars-channel-item:focus-visible,
 .lcars-header-action:focus-visible,
+.lcars-header-notifications:focus-visible,
 .lcars-filter-btn:focus-visible,
 .lcars-interaction-btn:focus-visible,
 .lcars-expand-btn:focus-visible,
@@ -3095,6 +3252,15 @@ body.lcars-modal-open {
 
   .lcars-user-name {
     display: none;
+  }
+
+  .lcars-header-notifications-label {
+    display: none;
+  }
+
+  .lcars-notifications-preview {
+    width: min(92vw, 360px);
+    right: 0;
   }
 
   .lcars-header {

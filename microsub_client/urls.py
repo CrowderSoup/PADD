@@ -21,6 +21,7 @@ urlpatterns = [
     path("api/channels/rename/", views.channel_rename_view, name="channel-rename"),
     path("api/channels/delete/", views.channel_delete_view, name="channel-delete"),
     path("api/channels/order/", views.channel_order_view, name="channel-order"),
+    path("api/notifications/preview/", views.notifications_preview_view, name="notifications-preview"),
     path("api/feeds/search/", views.feed_search_view, name="feed-search"),
     path("api/feeds/preview/", views.feed_preview_view, name="feed-preview"),
     path("api/feeds/list/<path:channel_uid>/", views.feed_list_view, name="feed-list"),

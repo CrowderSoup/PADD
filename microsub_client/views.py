@@ -28,6 +28,9 @@ from django.db.models import Count, Max, Q
 from .models import Broadcast, CachedEntry, DismissedBroadcast, Draft, Interaction, KnownUser, UserSettings
 from .utils import get_entry_type, sanitize_content, format_datetime
 
+NOTIFICATIONS_CHANNEL_UID = "notifications"
+NOTIFICATIONS_CHANNEL_NAME = "Notifications"
+
 
 # --- PWA Views ---
 
@@ -209,9 +212,12 @@ def settings_view(request):
     if not endpoint or not token:
         return redirect("login")
     try:
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, notifications_channel = _load_channels_for_ui(
+            endpoint, token, ensure_notifications=True
+        )
     except api.MicrosubError:
         channels = []
+        notifications_channel = None
 
     return render(request, "settings.html", {
         "default_filter": user_settings.default_filter,
@@ -220,6 +226,7 @@ def settings_view(request):
         "infinite_scroll": user_settings.infinite_scroll,
         "show_gardn_harvest": user_settings.show_gardn_harvest,
         "channels": channels,
+        "notifications_channel": notifications_channel,
     })
 
 
@@ -234,6 +241,60 @@ def _get_user_settings(request):
     return settings_obj
 
 
+def _is_notifications_channel(channel):
+    uid = str(channel.get("uid", "")).strip().lower()
+    if uid == NOTIFICATIONS_CHANNEL_UID:
+        return True
+    name = str(channel.get("name", "")).strip().lower()
+    return name == NOTIFICATIONS_CHANNEL_UID
+
+
+def _split_channels(channels):
+    notifications_channel = None
+    regular_channels = []
+    for channel in channels:
+        if _is_notifications_channel(channel):
+            if notifications_channel is None:
+                notifications_channel = channel
+            continue
+        regular_channels.append(channel)
+    return regular_channels, notifications_channel
+
+
+def _channel_has_unread(channel):
+    if not channel:
+        return False
+    unread = channel.get("unread")
+    if isinstance(unread, bool):
+        return unread
+    if isinstance(unread, (int, float)):
+        return unread > 0
+    if isinstance(unread, str):
+        return unread.strip().isdigit() and int(unread.strip()) > 0
+    return bool(unread)
+
+
+def _load_channels_for_ui(endpoint, token, ensure_notifications=False):
+    channels = api.get_channels(endpoint, token)
+    regular_channels, notifications_channel = _split_channels(channels)
+
+    if ensure_notifications and notifications_channel is None:
+        try:
+            api.create_channel(endpoint, token, NOTIFICATIONS_CHANNEL_NAME)
+            channels = api.get_channels(endpoint, token)
+            regular_channels, notifications_channel = _split_channels(channels)
+        except api.MicrosubError:
+            pass
+
+    if ensure_notifications and notifications_channel is None:
+        notifications_channel = {
+            "uid": NOTIFICATIONS_CHANNEL_UID,
+            "name": NOTIFICATIONS_CHANNEL_NAME,
+        }
+
+    return channels, regular_channels, notifications_channel
+
+
 # --- Main Views ---
 
 
@@ -244,16 +305,24 @@ def index_view(request):
         return redirect("login")
 
     try:
-        channels = api.get_channels(endpoint, token)
+        all_channels, channels, notifications_channel = _load_channels_for_ui(
+            endpoint, token, ensure_notifications=True
+        )
     except api.MicrosubError:
         request.session.flush()
         return redirect("login")
 
-    if not channels:
+    if not all_channels and not notifications_channel:
         return render(request, "timeline.html", {"channels": [], "entries": []})
 
-    first = channels[0]
-    return redirect("timeline", channel_uid=first.get("uid", "default"))
+    if channels:
+        first = channels[0]
+        return redirect("timeline", channel_uid=first.get("uid", "default"))
+
+    return redirect(
+        "timeline",
+        channel_uid=notifications_channel.get("uid", NOTIFICATIONS_CHANNEL_UID),
+    )
 
 
 def _parse_location(entry):
@@ -402,14 +471,34 @@ def timeline_view(request, channel_uid):
 
     user_settings = _get_user_settings(request)
 
-    after = request.GET.get("after")
-    if "unread" in request.GET:
-        unread_only = request.GET["unread"] == "1"
-    else:
-        unread_only = user_settings.default_filter == "unread"
-
     try:
-        channels = api.get_channels(endpoint, token)
+        all_channels, channels, notifications_channel = _load_channels_for_ui(
+            endpoint, token, ensure_notifications=True
+        )
+        current_channel = None
+        for ch in all_channels:
+            if ch.get("uid") == channel_uid:
+                current_channel = ch
+                break
+        if (
+            current_channel is None
+            and notifications_channel
+            and channel_uid == notifications_channel.get("uid")
+        ):
+            current_channel = notifications_channel
+
+        is_notifications_view = _is_notifications_channel(
+            current_channel or {"uid": channel_uid}
+        )
+        after = request.GET.get("after")
+        if "unread" in request.GET:
+            unread_only = request.GET["unread"] == "1"
+        else:
+            if is_notifications_view:
+                unread_only = _channel_has_unread(notifications_channel)
+            else:
+                unread_only = user_settings.default_filter == "unread"
+
         timeline_data = api.get_timeline(
             endpoint, token, channel_uid, after=after,
             is_read=False if unread_only else None,
@@ -421,12 +510,6 @@ def timeline_view(request, channel_uid):
     entries = timeline_data.get("items", [])
     paging = timeline_data.get("paging", {})
     after_cursor = paging.get("after")
-
-    current_channel = None
-    for ch in channels:
-        if ch.get("uid") == channel_uid:
-            current_channel = ch
-            break
 
     has_micropub = _enrich_entries(entries, request)
 
@@ -440,6 +523,8 @@ def timeline_view(request, channel_uid):
         "mark_read_behavior": user_settings.mark_read_behavior,
         "infinite_scroll": user_settings.infinite_scroll,
         "show_gardn_harvest": user_settings.show_gardn_harvest,
+        "notifications_channel": notifications_channel,
+        "is_notifications_view": is_notifications_view,
     }
 
     # HTMX partial for "load more"
@@ -450,7 +535,11 @@ def timeline_view(request, channel_uid):
     if request.htmx:
         base_ctx.update({
             "channels": channels,
-            "channel_name": current_channel.get("name", "") if current_channel else "",
+            "channel_name": (
+                NOTIFICATIONS_CHANNEL_NAME
+                if is_notifications_view
+                else current_channel.get("name", "") if current_channel else ""
+            ),
             "wrap_full": True,
         })
         return render(request, "partials/channel_switch.html", base_ctx)
@@ -482,12 +571,14 @@ def mark_read_view(request):
         return HttpResponse(status=502)
 
     try:
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         channels = []
+        notifications_channel = None
 
     return render(request, "partials/mark_read_response.html", {
         "channels": channels,
+        "notifications_channel": notifications_channel,
         "channel_uid": channel,
         "entries": entries,
     })
@@ -511,12 +602,14 @@ def mark_unread_view(request):
         return HttpResponse(status=502)
 
     try:
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         channels = []
+        notifications_channel = None
 
     return render(request, "partials/mark_unread_response.html", {
         "channels": channels,
+        "notifications_channel": notifications_channel,
         "channel_uid": channel,
         "entry_id": entry,
     })
@@ -617,7 +710,7 @@ def channel_create_view(request):
 
     try:
         api.create_channel(endpoint, token, name)
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
 
@@ -639,7 +732,7 @@ def channel_mark_read_view(request):
 
     try:
         api.mark_channel_read(endpoint, token, channel_uid)
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
 
@@ -662,7 +755,7 @@ def channel_rename_view(request):
 
     try:
         api.update_channel(endpoint, token, channel_uid, name)
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
 
@@ -684,7 +777,7 @@ def channel_delete_view(request):
 
     try:
         api.delete_channel(endpoint, token, channel_uid)
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError as exc:
         return HttpResponse(str(exc), status=502)
 
@@ -706,7 +799,7 @@ def channel_order_view(request):
 
     try:
         api.order_channels(endpoint, token, channel_uids)
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
 
@@ -1514,9 +1607,12 @@ def discover_view(request):
     endpoint = request.session.get("microsub_endpoint")
     token = request.session.get("access_token")
     try:
-        channels = api.get_channels(endpoint, token)
+        _all_channels, channels, notifications_channel = _load_channels_for_ui(
+            endpoint, token, ensure_notifications=True
+        )
     except api.MicrosubError:
         channels = []
+        notifications_channel = None
 
     sort = request.GET.get("sort", "hot")
 
@@ -1540,5 +1636,42 @@ def discover_view(request):
         "entries": page,
         "sort": sort,
         "channels": channels,
+        "notifications_channel": notifications_channel,
         "has_micropub": bool(request.session.get("micropub_endpoint")),
+    })
+
+
+def notifications_preview_view(request):
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token or not request.session.get("user_url"):
+        return HttpResponse(status=401)
+
+    try:
+        _all_channels, _channels, notifications_channel = _load_channels_for_ui(
+            endpoint, token, ensure_notifications=True
+        )
+        if not notifications_channel or not notifications_channel.get("uid"):
+            return render(request, "partials/notifications_preview.html", {
+                "entries": [],
+                "notifications_channel": None,
+                "unread_only": False,
+            })
+        unread_only = _channel_has_unread(notifications_channel)
+        timeline_data = api.get_timeline(
+            endpoint,
+            token,
+            notifications_channel.get("uid"),
+            is_read=False if unread_only else None,
+        )
+    except api.MicrosubError:
+        return HttpResponse(status=502)
+
+    entries = timeline_data.get("items", [])[:5]
+    _enrich_entries(entries, request)
+
+    return render(request, "partials/notifications_preview.html", {
+        "entries": entries,
+        "notifications_channel": notifications_channel,
+        "unread_only": unread_only,
     })

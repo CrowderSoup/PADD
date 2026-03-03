@@ -1,0 +1,17 @@
+{% if notifications_channel and notifications_channel.uid %}
+<button class="lcars-header-notifications {% if is_notifications_view %}lcars-header-notifications-active{% endif %}"
+   type="button"
+   data-alerts-trigger="1"
+   data-view-all-url="{% url 'timeline' channel_uid=notifications_channel.uid %}"
+   title="Notifications"
+   aria-label="Notifications"
+   aria-expanded="false">
+  <i class="far fa-bell" aria-hidden="true"></i>
+  <span class="lcars-header-notifications-label">Alerts</span>
+  {% if notifications_channel.unread and notifications_channel.unread != True %}
+    <span class="lcars-header-notifications-badge">{{ notifications_channel.unread }}</span>
+  {% elif notifications_channel.unread %}
+    <span class="lcars-header-notifications-badge">New</span>
+  {% endif %}
+</button>
+{% endif %}

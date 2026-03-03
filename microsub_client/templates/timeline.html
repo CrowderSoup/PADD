@@ -25,10 +25,14 @@
 {% endblock %}
 
 {% block content %}
-<div id="timeline" class="lcars-timeline" data-mark-read-behavior="{{ mark_read_behavior|default:'explicit' }}">
+<div id="timeline" class="lcars-timeline{% if is_notifications_view %} lcars-notifications-view{% endif %}" data-mark-read-behavior="{{ mark_read_behavior|default:'explicit' }}">
   <div class="lcars-timeline-header" id="timeline-header">
     <h2 class="lcars-channel-title" id="channel-title">
-      {% if current_channel %}{{ current_channel.name }}{% endif %}
+      {% if is_notifications_view %}
+        Notifications
+      {% elif current_channel %}
+        {{ current_channel.name }}
+      {% endif %}
     </h2>
     <div class="lcars-filter-toggle">
       {% if unread_only %}
