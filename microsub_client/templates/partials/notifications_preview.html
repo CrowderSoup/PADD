@@ -1,0 +1,54 @@
+<div class="lcars-notifications-preview-card">
+  <div class="lcars-notifications-preview-header">
+    <span class="lcars-sidebar-label">
+      {% if unread_only %}Unread Notifications{% else %}Recent Notifications{% endif %}
+    </span>
+  </div>
+  <div class="lcars-notifications-preview-list">
+    {% for entry in entries %}
+      <a href="{% url 'timeline' channel_uid=notifications_channel.uid %}"
+         class="lcars-notifications-preview-item"
+         hx-get="{% url 'timeline' channel_uid=notifications_channel.uid %}"
+         hx-target="#main-content"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">
+        <span class="lcars-notifications-preview-status {% if entry.is_read %}is-read{% else %}is-unread{% endif %}"></span>
+        <div class="lcars-notifications-preview-content">
+          <div class="lcars-notifications-preview-title">
+            {% if entry.name %}
+              {{ entry.name|truncatechars:80 }}
+            {% elif entry.safe_content %}
+              {{ entry.safe_content|striptags|truncatechars:80 }}
+            {% else %}
+              {{ entry.url|default:"Notification"|truncatechars:80 }}
+            {% endif %}
+          </div>
+          <div class="lcars-notifications-preview-meta">
+            {% if entry.author and entry.author.name %}
+              {{ entry.author.name }}
+            {% elif entry.author and entry.author.url %}
+              {{ entry.author.url|truncatechars:45 }}
+            {% else %}
+              Unknown source
+            {% endif %}
+            {% if entry.formatted_date %} • {{ entry.formatted_date }}{% endif %}
+          </div>
+        </div>
+      </a>
+    {% empty %}
+      <div class="lcars-empty">No notifications yet.</div>
+    {% endfor %}
+  </div>
+  {% if notifications_channel and notifications_channel.uid %}
+    <a href="{% url 'timeline' channel_uid=notifications_channel.uid %}"
+       class="lcars-button lcars-button-orange lcars-notifications-view-all"
+       hx-get="{% url 'timeline' channel_uid=notifications_channel.uid %}"
+       hx-target="#main-content"
+       hx-swap="innerHTML"
+       hx-push-url="true"
+       hx-indicator="#lcars-loading">
+      View All
+    </a>
+  {% endif %}
+</div>
