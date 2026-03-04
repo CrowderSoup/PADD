@@ -29,6 +29,71 @@ function toggleReplyEditor(btn) {
 }
 
 /**
+ * Injects the EasyMDE editor value into the HTMX request parameters.
+ *
+ * @param {HTMLFormElement} form - The reply form element.
+ * @param {CustomEvent} event - The htmx:configRequest event.
+ */
+function replyFormConfigRequest(form, event) {
+  if (form._easymde) {
+    event.detail.parameters.content = form._easymde.value();
+  }
+}
+
+/**
+ * Guards against submitting an empty reply; adds error styling if blank.
+ *
+ * @param {HTMLFormElement} form - The reply form element.
+ * @param {CustomEvent} event - The htmx:beforeRequest event.
+ */
+function replyFormBeforeRequest(form, event) {
+  form.classList.remove('lcars-reply-error');
+  var content = event.detail.requestConfig.parameters.content;
+  if (!content || !content.trim()) {
+    event.preventDefault();
+    form.classList.add('lcars-reply-error');
+  }
+}
+
+/**
+ * Handles the reply form response: updates the UI on success or shows an
+ * inline error message on failure.
+ *
+ * @param {HTMLFormElement} form - The reply form element.
+ * @param {CustomEvent} event - The htmx:afterRequest event.
+ */
+function replyFormAfterRequest(form, event) {
+  if (event.detail.successful) {
+    var c = form.closest('.lcars-entry-content');
+    var t = document.createElement('div');
+    t.innerHTML = event.detail.xhr.responseText;
+    var btn = t.querySelector('[data-reply-button]');
+    var sent = t.querySelector('[data-reply-sent]');
+    if (!btn || !sent) {
+      var err = form.querySelector('.lcars-reply-error-msg');
+      if (!err) {
+        err = document.createElement('div');
+        err.className = 'lcars-reply-error-msg';
+        form.insertBefore(err, form.querySelector('button[type=submit]'));
+      }
+      err.textContent = 'Something went wrong';
+      return;
+    }
+    c.querySelector('.lcars-reply-wrapper').innerHTML = btn.innerHTML;
+    c.querySelector('.lcars-interactions').insertAdjacentHTML('afterend', sent.innerHTML);
+    form.remove();
+  } else {
+    var err = form.querySelector('.lcars-reply-error-msg');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'lcars-reply-error-msg';
+      form.insertBefore(err, form.querySelector('button[type=submit]'));
+    }
+    err.textContent = event.detail.xhr.responseText || 'Something went wrong';
+  }
+}
+
+/**
  * Auto-expands collapsible entry content that is already short enough to show in full.
  * Safe to call multiple times — skips already-initialized elements.
  *
@@ -96,6 +161,12 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
 
   if (e.target.id === 'header-notifications-preview') {
     adjustAlertsPreviewPosition();
+  }
+
+  // Infinite scroll swaps stale the notifications panel — reset it so it reloads on next open.
+  if (e.target.classList.contains('lcars-load-more-sentinel') || e.target.classList.contains('lcars-load-more')) {
+    var scrollPanel = document.getElementById('header-notifications-preview');
+    if (scrollPanel) scrollPanel.dataset.loaded = '0';
   }
 
   // Close mobile sidebar after navigating to a channel, but not when
@@ -183,3 +254,53 @@ document.addEventListener('click', function(e) {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');
 }
+
+var _toastTimer = null;
+
+function showToast(message, type, duration) {
+  type = type || 'error';
+  duration = duration || 3000;
+  var toast = document.getElementById('lcars-toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.remove('lcars-toast-success', 'lcars-toast-error', 'lcars-hidden');
+  toast.classList.add('lcars-toast-' + type);
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() {
+    toast.classList.add('lcars-hidden');
+    _toastTimer = null;
+  }, duration);
+}
+
+var _errorPaths = [
+  '/api/micropub/',
+  '/api/timeline/remove/',
+  '/api/mute/',
+  '/api/unmute/',
+  '/api/block/',
+  '/api/mark-read/',
+  '/api/mark-unread/',
+];
+
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  var path = evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
+  if (!path) return;
+  var requestConfig = evt.detail.requestConfig || {};
+  var method = (requestConfig.verb || '').toLowerCase();
+  var sourceEl = evt.detail.elt;
+
+  if (!evt.detail.successful) {
+    var isReplyFormRequest = sourceEl && sourceEl.closest && sourceEl.closest('.lcars-reply-form');
+    if (isReplyFormRequest && path.indexOf('/api/micropub/reply/') !== -1) return;
+
+    var isInteractionPath = _errorPaths.some(function(p) { return path.indexOf(p) !== -1; });
+    if (isInteractionPath) {
+      showToast('Something went wrong. Please try again.', 'error');
+    }
+  } else {
+    var isSettingsSave = path.indexOf('/settings/') !== -1 && method === 'post';
+    if (isSettingsSave) {
+      showToast('Settings saved', 'success');
+    }
+  }
+});

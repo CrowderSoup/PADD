@@ -1356,6 +1356,12 @@ body {
   animation: lcars-chip-settle 0.24s ease-out both;
 }
 
+.lcars-interaction-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .lcars-like-btn.lcars-active {
   border-color: var(--lcars-orange);
   color: var(--lcars-orange);
@@ -1454,6 +1460,11 @@ a.lcars-interaction-btn:hover {
   align-self: flex-end;
 }
 
+.lcars-reply-form button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ========== Load More ========== */
 
 .lcars-load-more {
@@ -1528,6 +1539,37 @@ a.lcars-interaction-btn:hover {
 
 body.lcars-modal-open {
   overflow: hidden;
+}
+
+.lcars-toast {
+  position: fixed;
+  top: calc(var(--lcars-header-height) + 14px);
+  right: 16px;
+  padding: 10px 20px;
+  border-radius: var(--lcars-radius);
+  border: 1px solid var(--lcars-orange);
+  background: rgba(8, 12, 24, 0.94);
+  color: var(--lcars-text);
+  font-size: 13px;
+  z-index: 10001;
+  pointer-events: none;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.lcars-toast-success { border-color: var(--lcars-green, #7be88e); }
+.lcars-toast-error   { border-color: var(--lcars-orange); }
+
+@media (max-width: 720px) {
+  .lcars-toast {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    max-width: none;
+  }
 }
 
 .lcars-confirm-overlay {

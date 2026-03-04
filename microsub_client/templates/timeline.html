@@ -36,9 +36,9 @@
     </h2>
     <div class="lcars-filter-toggle">
       {% if unread_only %}
-        <a href="{% url 'timeline' channel_uid=channel_uid %}"
+        <a href="{% url 'timeline' channel_uid=channel_uid %}?unread=0"
            class="lcars-filter-btn"
-           hx-get="{% url 'timeline' channel_uid=channel_uid %}"
+           hx-get="{% url 'timeline' channel_uid=channel_uid %}?unread=0"
            hx-target="#timeline"
            hx-swap="innerHTML"
            hx-push-url="true"
