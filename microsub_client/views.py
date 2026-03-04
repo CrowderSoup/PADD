@@ -1,7 +1,10 @@
 import datetime
+import ipaddress
 import json
 import secrets
+import socket
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse as _urlparse
 
 import defusedxml.ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -399,6 +402,23 @@ def _lookup_interactions(entries, user_url):
     return interaction_set, interaction_data
 
 
+def _bluesky_at_to_web_url(at_uri: str) -> str:
+    # at://did:plc:xxx/app.bsky.feed.post/rkey → https://bsky.app/profile/did:plc:xxx/post/rkey
+    parts = at_uri[5:].split("/")
+    if len(parts) >= 3:
+        return f"https://bsky.app/profile/{parts[0]}/post/{parts[2]}"
+    return at_uri
+
+
+def _detect_platform(url: str) -> str:
+    host = _urlparse(url).netloc
+    if "bsky.app" in host:
+        return "Bluesky"
+    if "/@" in url or "/users/" in url:
+        return "Mastodon"
+    return ""
+
+
 def _enrich_entries(entries, request):
     """Add template-friendly fields to entry dicts, mutating each entry in place.
 
@@ -429,6 +449,15 @@ def _enrich_entries(entries, request):
                 entry[underscore_key] = val
                 if isinstance(val, dict):
                     entry[underscore_key + "_context"] = val
+        if isinstance(entry.get("category"), list):
+            entry["category"] = [c for c in entry["category"] if not c.startswith("http")]
+        irt = entry.get("in_reply_to", "")
+        if isinstance(irt, str) and irt.startswith("at://"):
+            entry["in_reply_to_web_url"] = _bluesky_at_to_web_url(irt)
+            entry["in_reply_to_platform"] = "Bluesky"
+        elif isinstance(irt, str) and irt.startswith("http"):
+            entry["in_reply_to_web_url"] = irt
+            entry["in_reply_to_platform"] = _detect_platform(irt)
         if "_id" in entry:
             entry["entry_id"] = entry["_id"]
         if "_is_read" in entry:
@@ -461,6 +490,81 @@ def _enrich_entries(entries, request):
             entry["reply_content"] = reply_data.get("content", "")
 
     return has_micropub
+
+
+_EMBED_TIMEOUT = 3
+
+
+def _fetch_bluesky_embed(at_uri: str) -> dict | None:
+    import requests
+    resp = requests.get(
+        "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts",
+        params={"uris": at_uri}, timeout=_EMBED_TIMEOUT
+    )
+    resp.raise_for_status()
+    posts = resp.json().get("posts", [])
+    if not posts:
+        return None
+    post = posts[0]
+    author = post.get("author", {})
+    return {
+        "author_name": author.get("displayName") or f"@{author.get('handle', '')}",
+        "author_photo": author.get("avatar", ""),
+        "content": post.get("record", {}).get("text", ""),
+        "web_url": _bluesky_at_to_web_url(at_uri),
+        "platform": "Bluesky",
+    }
+
+
+def _fetch_mastodon_embed(url: str, parsed) -> dict | None:
+    import requests
+    status_id = url.rstrip("/").split("/")[-1]
+    if not status_id.isdigit():
+        return None
+    instance = f"{parsed.scheme}://{parsed.netloc}"
+    resp = requests.get(
+        f"{instance}/api/v1/statuses/{status_id}", timeout=_EMBED_TIMEOUT
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    account = data.get("account", {})
+    return {
+        "author_name": account.get("display_name") or account.get("acct", ""),
+        "author_photo": account.get("avatar", ""),
+        "content": sanitize_content(data.get("content", "")),
+        "web_url": data.get("url", url),
+        "platform": "Mastodon",
+    }
+
+
+def _fetch_embed_context(url: str) -> dict | None:
+    if url.startswith("at://"):
+        return _fetch_bluesky_embed(url)
+    parsed = _urlparse(url)
+    try:
+        ip = ipaddress.ip_address(socket.gethostbyname(parsed.hostname))
+        if ip.is_private or ip.is_loopback:
+            return None
+    except Exception:
+        return None
+    if "/@" in url or "/users/" in url:
+        return _fetch_mastodon_embed(url, parsed)
+    return None
+
+
+def embed_post_view(request):
+    url = request.GET.get("url", "")
+    if not (url.startswith("at://") or url.startswith("https://")):
+        return render(request, "partials/embed_post_fallback.html", {"url": url})
+    try:
+        ctx = _fetch_embed_context(url)
+    except Exception:
+        ctx = None
+    if not ctx:
+        web_url = _bluesky_at_to_web_url(url) if url.startswith("at://") else url
+        return render(request, "partials/embed_post_fallback.html",
+                      {"url": web_url, "platform": _detect_platform(web_url)})
+    return render(request, "partials/embed_post.html", ctx)
 
 
 def timeline_view(request, channel_uid):

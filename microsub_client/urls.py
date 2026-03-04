@@ -48,4 +48,5 @@ urlpatterns = [
     path("admin/broadcasts/<int:broadcast_id>/toggle/", views.broadcast_toggle_view, name="broadcast-toggle"),
     path("api/broadcast/<int:broadcast_id>/dismiss/", views.broadcast_dismiss_view, name="broadcast-dismiss"),
     path("api/broadcasts/", views.broadcast_banner_view, name="broadcast-banner"),
+    path("api/embed-post/", views.embed_post_view, name="embed-post"),
 ]

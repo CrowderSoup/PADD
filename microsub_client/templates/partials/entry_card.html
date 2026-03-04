@@ -5,11 +5,26 @@
       {% if entry.author %}
         <div class="lcars-author">
           {% if entry.author.photo %}
+            {% if entry.author.url %}<a href="{{ entry.author.url }}" class="lcars-author-photo-link" target="_blank" rel="noopener">{% endif %}
             <img src="{{ entry.author.photo }}" alt="" class="lcars-author-photo" onerror="this.onerror=null;this.src='{% static 'cadet.svg' %}'">
+            {% if entry.author.url %}</a>{% endif %}
           {% endif %}
-          <span class="lcars-author-name">
-            {% if entry.author.name %}{{ entry.author.name }}{% elif entry.author.url %}{{ entry.author.url }}{% endif %}
-          </span>
+          <div class="lcars-author-info">
+            {% if entry.author.url %}
+              <a href="{{ entry.author.url }}" class="lcars-author-name-link" target="_blank" rel="noopener">
+                <span class="lcars-author-name">{% if entry.author.name %}{{ entry.author.name }}{% elif entry.author.url %}{{ entry.author.url }}{% endif %}</span>
+              </a>
+            {% else %}
+              <span class="lcars-author-name">{% if entry.author.name %}{{ entry.author.name }}{% elif entry.author.url %}{{ entry.author.url }}{% endif %}</span>
+            {% endif %}
+            {% if entry.formatted_date %}
+              {% if entry.url %}
+                <a href="{{ entry.url }}" class="lcars-entry-date-link" target="_blank" rel="noopener"><time class="lcars-entry-date">{{ entry.formatted_date }}</time></a>
+              {% else %}
+                <time class="lcars-entry-date">{{ entry.formatted_date }}</time>
+              {% endif %}
+            {% endif %}
+          </div>
           {% if entry.author.url %}
           <div class="lcars-author-actions">
             <button class="lcars-author-actions-btn" type="button" title="Author actions">&#8942;</button>
@@ -38,16 +53,16 @@
         </div>
       {% endif %}
       <div class="lcars-entry-meta">
-        {% if entry.formatted_date %}
-          <time class="lcars-entry-date">{{ entry.formatted_date }}</time>
-        {% endif %}
         {% if entry.is_read %}
           <div class="lcars-entry-read-action"
                hx-post="{% url 'mark-unread' %}"
                hx-vals='{"channel": "{{ channel_uid|escapejs }}", "entry": "{{ entry.entry_id|default:entry.url|escapejs }}"}'
                hx-swap="outerHTML"
                hx-target="this">
-            <span class="lcars-read-status lcars-read">Read</span>
+            <span class="lcars-read-status lcars-read">
+              <svg class="lcars-read-status-icon" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,6 5,9 10,3"/></svg>
+              <span class="lcars-read-status-text">Read</span>
+            </span>
           </div>
         {% else %}
           <div class="lcars-entry-read-action"
@@ -59,7 +74,10 @@
                data-channel="{{ channel_uid }}"
                data-entry="{{ entry.entry_id|default:entry.url }}"
                data-entry-read="{{ entry.entry_id|default:entry.url }}">
-            <span class="lcars-read-status lcars-unread">Mark Read</span>
+            <span class="lcars-read-status lcars-unread">
+              <svg class="lcars-read-status-icon" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,6 5,9 10,3"/></svg>
+              <span class="lcars-read-status-text">Mark Read</span>
+            </span>
           </div>
         {% endif %}
         <button class="lcars-entry-remove-btn"
@@ -74,7 +92,7 @@
       </div>
     </div>
 
-    {% if entry.name %}
+    {% if entry.name and entry.display_type == "article" %}
       <h3 class="lcars-entry-title">
         {% if entry.url %}<a href="{{ entry.url }}" target="_blank" rel="noopener">{{ entry.name }}</a>{% else %}{{ entry.name }}{% endif %}
       </h3>
@@ -119,7 +137,15 @@
             <a href="{{ ctx.url|default:entry.in_reply_to }}" class="lcars-cite-link" target="_blank" rel="noopener">View original</a>
           </blockquote>
         {% endwith %}{% else %}
-          <a href="{{ entry.in_reply_to }}" target="_blank" rel="noopener">{{ entry.in_reply_to }}</a>
+          <div hx-get="{% url 'embed-post' %}?url={{ entry.in_reply_to|urlencode }}"
+               hx-trigger="intersect once"
+               hx-swap="outerHTML"
+               class="lcars-embed-placeholder">
+            <a href="{{ entry.in_reply_to_web_url|default:entry.in_reply_to }}"
+               class="lcars-cite-link" target="_blank" rel="noopener">
+              View on {{ entry.in_reply_to_platform|default:"original" }}
+            </a>
+          </div>
         {% endif %}
       </div>
     {% elif entry.display_type == "bookmark" %}
@@ -147,9 +173,11 @@
             <div class="lcars-entry-body">{{ entry.safe_content }}</div>
           {% endif %}
           {% if entry.photo %}
-            <div class="lcars-entry-photos">
+            <div class="lcars-entry-photos" data-count="{{ entry.photo|length }}">
               {% for photo in entry.photo %}
-                <img src="{{ photo }}" alt="" class="lcars-entry-photo" loading="lazy">
+                <button class="lcars-photo-btn" type="button" data-index="{{ forloop.counter0 }}" aria-label="View photo {{ forloop.counter }}">
+                  <img src="{{ photo }}" alt="" class="lcars-entry-photo" loading="lazy">
+                </button>
               {% endfor %}
             </div>
           {% endif %}

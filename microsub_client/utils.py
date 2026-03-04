@@ -50,7 +50,8 @@ def get_entry_type(entry):
         return "checkin"
     if entry.get("photo"):
         return "photo"
-    if entry.get("name") and entry.get("name") != content_text[:100]:
+    name = entry.get("name", "").strip()
+    if name and not content_text.strip().startswith(name):
         return "article"
     return "note"
 

@@ -1,0 +1,8 @@
+<blockquote class="lcars-cite-preview lcars-cite-embed">
+  <cite class="lcars-cite-author">
+    {% if author_photo %}<img src="{{ author_photo }}" alt="" class="lcars-cite-photo">{% endif %}
+    {{ author_name }}
+  </cite>
+  {% if content %}<p class="lcars-cite-snippet">{{ content|truncatechars:280 }}</p>{% endif %}
+  <a href="{{ web_url }}" class="lcars-cite-link" target="_blank" rel="noopener">View on {{ platform }}</a>
+</blockquote>
