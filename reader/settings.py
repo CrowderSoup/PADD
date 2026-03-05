@@ -69,7 +69,26 @@ DATABASES = {
     )
 }
 
-SESSION_ENGINE = "django.contrib.sessions.backends.db"
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "padd",
+    }
+}
+
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
+
+import sys  # noqa: E402
+if "test" in sys.argv:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
+    SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
 PADD_ADMIN_URLS = [
     u.strip()

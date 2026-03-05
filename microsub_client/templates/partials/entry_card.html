@@ -93,7 +93,7 @@
       </div>
     </div>
 
-    {% if entry.name and entry.display_type == "article" %}
+    {% if entry.name and entry.display_type == "article" or entry.name and entry.display_type == "photo" %}
       <h3 class="lcars-entry-title">
         {% if entry.url %}<a href="{{ entry.url }}" target="_blank" rel="noopener">{{ entry.name }}</a>{% else %}{{ entry.name }}{% endif %}
       </h3>

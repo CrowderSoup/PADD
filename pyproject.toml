@@ -18,4 +18,13 @@ dependencies = [
     "pillow>=11.0.0",
     "pillow-heif>=0.18.0",
     "whitenoise>=6.11.0",
+    "django-redis>=6.0.0",
+    "django-ratelimit>=4.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "fakeredis>=2.34.1",
+    "pytest>=9.0.2",
+    "pytest-django>=4.12.0",
 ]

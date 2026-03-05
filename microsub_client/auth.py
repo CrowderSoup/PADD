@@ -8,8 +8,21 @@ import mf2py
 import requests
 from requests.exceptions import RequestException
 
+from django.core.cache import cache
 
-def fetch_hcard(url):
+HCARD_CACHE_TTL = 3600       # 1 hour
+ENDPOINTS_CACHE_TTL = 300    # 5 minutes
+
+
+def _hcard_cache_key(url: str) -> str:
+    return f"hcard:{hashlib.md5(url.encode()).hexdigest()}"
+
+
+def _endpoints_cache_key(url: str) -> str:
+    return f"endpoints:{hashlib.md5(url.encode()).hexdigest()}"
+
+
+def _fetch_hcard_uncached(url):
     """Fetch and parse h-card from a URL. Returns dict with 'name' and 'photo'."""
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
@@ -31,7 +44,18 @@ def fetch_hcard(url):
     return {"name": None, "photo": None}
 
 
-def discover_endpoints(url):
+def fetch_hcard(url: str) -> dict:
+    """Fetch and parse h-card from a URL. Returns dict with 'name' and 'photo'. Cached for 1 hour."""
+    key = _hcard_cache_key(url)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    result = _fetch_hcard_uncached(url)
+    cache.set(key, result, HCARD_CACHE_TTL)
+    return result
+
+
+def _discover_endpoints_uncached(url):
     """Fetch a user's URL and discover IndieAuth and Microsub endpoints.
 
     Checks both HTML <link> tags and HTTP Link headers.
@@ -79,6 +103,17 @@ def discover_endpoints(url):
             endpoints[rel] = urljoin(url, match.group(1))
 
     return endpoints
+
+
+def discover_endpoints(url: str) -> dict:
+    """Fetch a user's URL and discover IndieAuth and Microsub endpoints. Cached for 5 minutes."""
+    key = _endpoints_cache_key(url)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    result = _discover_endpoints_uncached(url)
+    cache.set(key, result, ENDPOINTS_CACHE_TTL)
+    return result
 
 
 def generate_pkce_pair():

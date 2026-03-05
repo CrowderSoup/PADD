@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import ipaddress
 import json
 import secrets
@@ -9,6 +10,7 @@ from urllib.parse import urlparse as _urlparse
 import defusedxml.ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
+from django.core.cache import cache
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.templatetags.static import static
@@ -28,8 +30,11 @@ from .auth import (
 from django.core.paginator import Paginator
 from django.db.models import Count, Max, Q
 
+from .context_processors import _broadcasts_cache_key
 from .models import Broadcast, CachedEntry, DismissedBroadcast, Draft, Interaction, KnownUser, UserSettings
 from .utils import get_entry_type, sanitize_content, format_datetime
+
+from django_ratelimit.decorators import ratelimit
 
 NOTIFICATIONS_CHANNEL_UID = "notifications"
 NOTIFICATIONS_CHANNEL_NAME = "Notifications"
@@ -77,7 +82,15 @@ def landing_view(request):
     return render(request, "landing.html")
 
 
+@ratelimit(key="ip", rate="10/m", method="POST", block=False)
 def login_view(request):
+    if getattr(request, "limited", False):
+        return render(
+            request,
+            "login.html",
+            {"error": "Too many login attempts. Please wait a moment."},
+        )
+
     if request.session.get("access_token"):
         return redirect("index")
 
@@ -200,6 +213,7 @@ def settings_view(request):
         user_settings.infinite_scroll = request.POST.get("infinite_scroll") == "on"
         user_settings.show_gardn_harvest = request.POST.get("show_gardn_harvest") == "on"
         user_settings.save()
+        cache.delete(_user_settings_cache_key(request.session.get("user_url")))
         if request.htmx:
             return render(request, "partials/settings_form.html", {
                 "default_filter": user_settings.default_filter,
@@ -233,14 +247,40 @@ def settings_view(request):
     })
 
 
+USER_SETTINGS_CACHE_TTL = 300  # 5 minutes
+CHANNELS_CACHE_TTL = 30  # seconds
+
+
+def _user_settings_cache_key(user_url: str) -> str:
+    return f"user_settings:{hashlib.md5(user_url.encode()).hexdigest()}"
+
+
+def _channels_cache_key(endpoint: str, token: str) -> str:
+    return f"channels:{hashlib.md5(f'{endpoint}:{token}'.encode()).hexdigest()}"
+
+
+def _get_channels_cached(endpoint: str, token: str) -> list:
+    key = _channels_cache_key(endpoint, token)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    channels = api.get_channels(endpoint, token)
+    cache.set(key, channels, CHANNELS_CACHE_TTL)
+    return channels
+
+
 def _get_user_settings(request):
     user_url = request.session.get("user_url")
     if not user_url:
         raise ValueError("Missing user_url in session")
 
-    settings_obj, _ = UserSettings.objects.get_or_create(
-        user_url=user_url
-    )
+    key = _user_settings_cache_key(user_url)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    settings_obj, _ = UserSettings.objects.get_or_create(user_url=user_url)
+    cache.set(key, settings_obj, USER_SETTINGS_CACHE_TTL)
     return settings_obj
 
 
@@ -278,13 +318,14 @@ def _channel_has_unread(channel):
 
 
 def _load_channels_for_ui(endpoint, token, ensure_notifications=False):
-    channels = api.get_channels(endpoint, token)
+    channels = _get_channels_cached(endpoint, token)
     regular_channels, notifications_channel = _split_channels(channels)
 
     if ensure_notifications and notifications_channel is None:
         try:
             api.create_channel(endpoint, token, NOTIFICATIONS_CHANNEL_NAME)
-            channels = api.get_channels(endpoint, token)
+            cache.delete(_channels_cache_key(endpoint, token))
+            channels = _get_channels_cached(endpoint, token)
             regular_channels, notifications_channel = _split_channels(channels)
         except api.MicrosubError:
             pass
@@ -814,6 +855,7 @@ def channel_create_view(request):
 
     try:
         api.create_channel(endpoint, token, name)
+        cache.delete(_channels_cache_key(endpoint, token))
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -859,6 +901,7 @@ def channel_rename_view(request):
 
     try:
         api.update_channel(endpoint, token, channel_uid, name)
+        cache.delete(_channels_cache_key(endpoint, token))
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -881,6 +924,7 @@ def channel_delete_view(request):
 
     try:
         api.delete_channel(endpoint, token, channel_uid)
+        cache.delete(_channels_cache_key(endpoint, token))
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError as exc:
         return HttpResponse(str(exc), status=502)
@@ -903,6 +947,7 @@ def channel_order_view(request):
 
     try:
         api.order_channels(endpoint, token, channel_uids)
+        cache.delete(_channels_cache_key(endpoint, token))
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -1692,6 +1737,7 @@ def broadcast_dismiss_view(request, broadcast_id):
         DismissedBroadcast.objects.get_or_create(
             user_url=user_url, broadcast_id=broadcast_id
         )
+        cache.delete(_broadcasts_cache_key(user_url))
 
     return HttpResponse("")
 
