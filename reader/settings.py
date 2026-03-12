@@ -85,11 +85,6 @@ CACHES = {
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
 
-import sys  # noqa: E402
-if "test" in sys.argv:
-    CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
-    SESSION_ENGINE = "django.contrib.sessions.backends.db"
-
 PADD_ADMIN_URLS = [
     u.strip()
     for u in os.environ.get("PADD_ADMIN_URLS", "").split(",")

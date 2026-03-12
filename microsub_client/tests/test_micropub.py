@@ -184,10 +184,10 @@ class QueryConfigTests(TestCase):
         result = micropub.query_config("https://mp.example/", "token")
         self.assertEqual(result["media-endpoint"], "https://media.example/")
         mock_get.assert_called_once_with(
-            "https://mp.example/",
+            "https://mp.example/?q=config",
             headers={"Authorization": "Bearer token"},
-            params={"q": "config"},
             timeout=15,
+            allow_redirects=False,
         )
 
     @patch("microsub_client.micropub.requests.get")
@@ -206,6 +206,13 @@ class QueryConfigTests(TestCase):
     def test_network_error_raises_micropub_error(self, mock_get):
         from requests.exceptions import RequestException
         mock_get.side_effect = RequestException("timeout")
+        with self.assertRaises(micropub.MicropubError):
+            micropub.query_config("https://mp.example/", "token")
+
+    @patch("microsub_client.micropub.requests.get")
+    def test_invalid_json_raises_micropub_error(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        mock_get.return_value.json.side_effect = ValueError("bad json")
         with self.assertRaises(micropub.MicropubError):
             micropub.query_config("https://mp.example/", "token")
 

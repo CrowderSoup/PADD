@@ -1,13 +1,30 @@
 import requests
 from requests.exceptions import RequestException
 
+from .outbound import UnsafeOutboundURLError, parse_json_response, safe_request
+
 
 class MicrosubError(Exception):
-    pass
+    def __init__(self, message, *, status_code=None, response_text=None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_text = response_text
 
 
 class AuthenticationError(MicrosubError):
     pass
+
+
+def _response_text_detail(response, limit=200):
+    text = getattr(response, "text", "")
+    if not isinstance(text, str):
+        return ""
+    detail = " ".join(text.split())
+    if not detail:
+        return ""
+    if len(detail) <= limit:
+        return detail
+    return f"{detail[:limit - 3]}..."
 
 
 def _request(method, endpoint, token, params=None, data=None):
@@ -29,25 +46,36 @@ def _request(method, endpoint, token, params=None, data=None):
     """
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.request(
-            method,
+        resp = safe_request(
             endpoint,
+            send=lambda url, **kwargs: requests.request(method, url, **kwargs),
             headers=headers,
             params=params,
             data=data,
             timeout=15,
+            allow_redirects=method.upper() == "GET",
         )
+    except UnsafeOutboundURLError as exc:
+        raise MicrosubError(f"Network error: {exc}") from exc
     except RequestException as exc:
         raise MicrosubError(f"Network error: {exc}") from exc
 
     if resp.status_code == 401:
         raise AuthenticationError("Access token is invalid or expired")
     if not resp.ok:
-        raise MicrosubError(f"Microsub API error: {resp.status_code}")
+        detail = _response_text_detail(resp)
+        message = f"Microsub API error: {resp.status_code}"
+        if detail:
+            message = f"{message} ({detail})"
+        raise MicrosubError(
+            message,
+            status_code=resp.status_code,
+            response_text=detail or None,
+        )
 
     if resp.status_code == 204 or not resp.content:
         return {}
-    return resp.json()
+    return parse_json_response(resp, MicrosubError, "Microsub API error")
 
 
 def get_channels(endpoint, token):

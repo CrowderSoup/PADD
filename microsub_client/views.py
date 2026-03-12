@@ -1,9 +1,8 @@
 import datetime
 import hashlib
-import ipaddress
 import json
+import logging
 import secrets
-import socket
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse as _urlparse
 
@@ -32,12 +31,15 @@ from django.db.models import Count, Max, Q
 
 from .context_processors import _broadcasts_cache_key
 from .models import Broadcast, CachedEntry, DismissedBroadcast, Draft, Interaction, KnownUser, UserSettings
+from .outbound import normalize_url, parse_json_response, safe_request
 from .utils import get_entry_type, sanitize_content, format_datetime
 
 from django_ratelimit.decorators import ratelimit
 
 NOTIFICATIONS_CHANNEL_UID = "notifications"
 NOTIFICATIONS_CHANNEL_NAME = "Notifications"
+
+logger = logging.getLogger(__name__)
 
 
 # --- PWA Views ---
@@ -60,6 +62,24 @@ def service_worker_view(request):
 
 def _client_id(request):
     return request.build_absolute_uri("/id")
+
+
+def _microsub_failure_response(request, endpoint, action, exc, **context):
+    details = ", ".join(
+        f"{key}={value}"
+        for key, value in context.items()
+        if value not in (None, "", [], (), {})
+    )
+    logger.warning(
+        "Microsub %s failed for %s via %s%s: %s",
+        action,
+        request.path,
+        endpoint,
+        f" ({details})" if details else "",
+        exc,
+        exc_info=True,
+    )
+    return HttpResponse(str(exc), status=502)
 
 
 def client_id_metadata_view(request):
@@ -101,7 +121,8 @@ def login_view(request):
             error = "Please enter your domain."
         else:
             try:
-                endpoints = discover_endpoints(url)
+                normalized_url = normalize_url(url, trailing_slash=True)
+                endpoints = discover_endpoints(normalized_url)
                 if not endpoints["authorization_endpoint"]:
                     error = "Could not find an authorization endpoint for that URL."
                 elif not endpoints["token_endpoint"]:
@@ -117,14 +138,14 @@ def login_view(request):
                     request.session["microsub_endpoint"] = endpoints["microsub"]
                     if endpoints.get("micropub"):
                         request.session["micropub_endpoint"] = endpoints["micropub"]
-                    request.session["user_url"] = url
+                    request.session["user_url"] = normalized_url
 
                     client_id = _client_id(request)
                     redirect_uri = request.build_absolute_uri("/login/callback/")
 
                     auth_url = build_authorization_url(
                         endpoints["authorization_endpoint"],
-                        me=url,
+                        me=normalized_url,
                         redirect_uri=redirect_uri,
                         state=state,
                         client_id=client_id,
@@ -259,6 +280,10 @@ def _channels_cache_key(endpoint: str, token: str) -> str:
     return f"channels:{hashlib.md5(f'{endpoint}:{token}'.encode()).hexdigest()}"
 
 
+def _invalidate_channels_cache(endpoint: str, token: str) -> None:
+    cache.delete(_channels_cache_key(endpoint, token))
+
+
 def _get_channels_cached(endpoint: str, token: str) -> list:
     key = _channels_cache_key(endpoint, token)
     cached = cache.get(key)
@@ -282,6 +307,23 @@ def _get_user_settings(request):
     settings_obj, _ = UserSettings.objects.get_or_create(user_url=user_url)
     cache.set(key, settings_obj, USER_SETTINGS_CACHE_TTL)
     return settings_obj
+
+
+def _get_microsub_credentials(request):
+    endpoint = request.session.get("microsub_endpoint")
+    token = request.session.get("access_token")
+    if not endpoint or not token:
+        return None
+    return endpoint, token
+
+
+def _get_micropub_credentials(request):
+    mp_endpoint = request.session.get("micropub_endpoint")
+    token = request.session.get("access_token")
+    user_url = request.session.get("user_url")
+    if not mp_endpoint or not token or not user_url:
+        return None
+    return mp_endpoint, token, user_url
 
 
 def _is_notifications_channel(channel):
@@ -324,7 +366,7 @@ def _load_channels_for_ui(endpoint, token, ensure_notifications=False):
     if ensure_notifications and notifications_channel is None:
         try:
             api.create_channel(endpoint, token, NOTIFICATIONS_CHANNEL_NAME)
-            cache.delete(_channels_cache_key(endpoint, token))
+            _invalidate_channels_cache(endpoint, token)
             channels = _get_channels_cached(endpoint, token)
             regular_channels, notifications_channel = _split_channels(channels)
         except api.MicrosubError:
@@ -343,10 +385,10 @@ def _load_channels_for_ui(endpoint, token, ensure_notifications=False):
 
 
 def index_view(request):
-    endpoint = request.session.get("microsub_endpoint")
-    token = request.session.get("access_token")
-    if not endpoint or not token:
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
         return redirect("login")
+    endpoint, token = credentials
 
     try:
         all_channels, channels, notifications_channel = _load_channels_for_ui(
@@ -538,12 +580,16 @@ _EMBED_TIMEOUT = 3
 
 def _fetch_bluesky_embed(at_uri: str) -> dict | None:
     import requests
-    resp = requests.get(
+
+    resp = safe_request(
         "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts",
-        params={"uris": at_uri}, timeout=_EMBED_TIMEOUT
+        send=requests.get,
+        params={"uris": at_uri},
+        timeout=_EMBED_TIMEOUT,
+        allow_redirects=True,
     )
     resp.raise_for_status()
-    posts = resp.json().get("posts", [])
+    posts = parse_json_response(resp, ValueError, "Bluesky embed error").get("posts", [])
     if not posts:
         return None
     post = posts[0]
@@ -559,15 +605,19 @@ def _fetch_bluesky_embed(at_uri: str) -> dict | None:
 
 def _fetch_mastodon_embed(url: str, parsed) -> dict | None:
     import requests
+
     status_id = url.rstrip("/").split("/")[-1]
     if not status_id.isdigit():
         return None
     instance = f"{parsed.scheme}://{parsed.netloc}"
-    resp = requests.get(
-        f"{instance}/api/v1/statuses/{status_id}", timeout=_EMBED_TIMEOUT
+    resp = safe_request(
+        f"{instance}/api/v1/statuses/{status_id}",
+        send=requests.get,
+        timeout=_EMBED_TIMEOUT,
+        allow_redirects=True,
     )
     resp.raise_for_status()
-    data = resp.json()
+    data = parse_json_response(resp, ValueError, "Mastodon embed error")
     account = data.get("account", {})
     return {
         "author_name": account.get("display_name") or account.get("acct", ""),
@@ -582,12 +632,6 @@ def _fetch_embed_context(url: str) -> dict | None:
     if url.startswith("at://"):
         return _fetch_bluesky_embed(url)
     parsed = _urlparse(url)
-    try:
-        ip = ipaddress.ip_address(socket.gethostbyname(parsed.hostname))
-        if ip.is_private or ip.is_loopback:
-            return None
-    except Exception:
-        return None
     if "/@" in url or "/users/" in url:
         return _fetch_mastodon_embed(url, parsed)
     return None
@@ -700,8 +744,10 @@ def mark_read_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel = request.POST.get("channel")
     entries = request.POST.getlist("entry")
     # Also accept entry[] for batch calls
@@ -712,8 +758,16 @@ def mark_read_view(request):
 
     try:
         api.mark_read(endpoint, token, channel, entries)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+        _invalidate_channels_cache(endpoint, token)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "mark_read",
+            exc,
+            channel=channel,
+            entry_count=len(entries),
+        )
 
     try:
         _all_channels, channels, notifications_channel = _load_channels_for_ui(endpoint, token)
@@ -733,8 +787,10 @@ def mark_unread_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel = request.POST.get("channel")
     entry = request.POST.get("entry")
 
@@ -743,8 +799,16 @@ def mark_unread_view(request):
 
     try:
         api.mark_unread(endpoint, token, channel, entry)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+        _invalidate_channels_cache(endpoint, token)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "mark_unread",
+            exc,
+            channel=channel,
+            entry=entry,
+        )
 
     try:
         _all_channels, channels, notifications_channel = _load_channels_for_ui(endpoint, token)
@@ -764,8 +828,10 @@ def remove_entry_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel = request.POST.get("channel")
     entry = request.POST.get("entry")
 
@@ -774,8 +840,16 @@ def remove_entry_view(request):
 
     try:
         api.remove_entry(endpoint, token, channel, entry)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+        _invalidate_channels_cache(endpoint, token)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "remove_entry",
+            exc,
+            channel=channel,
+            entry=entry,
+        )
 
     return HttpResponse("")
 
@@ -784,8 +858,10 @@ def mute_user_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     author_url = request.POST.get("author_url")
     channel = request.POST.get("channel") or None
 
@@ -794,8 +870,15 @@ def mute_user_view(request):
 
     try:
         api.mute_user(endpoint, token, author_url, channel=channel)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "mute",
+            exc,
+            author_url=author_url,
+            channel=channel,
+        )
 
     return HttpResponse(status=204)
 
@@ -804,8 +887,10 @@ def unmute_user_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     author_url = request.POST.get("author_url")
     channel = request.POST.get("channel") or None
 
@@ -814,8 +899,15 @@ def unmute_user_view(request):
 
     try:
         api.unmute_user(endpoint, token, author_url, channel=channel)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "unmute",
+            exc,
+            author_url=author_url,
+            channel=channel,
+        )
 
     return HttpResponse(status=204)
 
@@ -824,8 +916,10 @@ def block_user_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     author_url = request.POST.get("author_url")
 
     if not author_url:
@@ -833,8 +927,14 @@ def block_user_view(request):
 
     try:
         api.block_user(endpoint, token, author_url)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "block",
+            exc,
+            author_url=author_url,
+        )
 
     return HttpResponse(status=204)
 
@@ -846,8 +946,10 @@ def channel_create_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     name = request.POST.get("name", "").strip()
 
     if not name:
@@ -855,7 +957,7 @@ def channel_create_view(request):
 
     try:
         api.create_channel(endpoint, token, name)
-        cache.delete(_channels_cache_key(endpoint, token))
+        _invalidate_channels_cache(endpoint, token)
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -869,8 +971,10 @@ def channel_mark_read_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel_uid = request.POST.get("channel")
 
     if not channel_uid:
@@ -878,9 +982,16 @@ def channel_mark_read_view(request):
 
     try:
         api.mark_channel_read(endpoint, token, channel_uid)
+        _invalidate_channels_cache(endpoint, token)
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
-    except api.MicrosubError:
-        return HttpResponse(status=502)
+    except api.MicrosubError as exc:
+        return _microsub_failure_response(
+            request,
+            endpoint,
+            "mark_channel_read",
+            exc,
+            channel=channel_uid,
+        )
 
     return render(request, "partials/channel_list.html", {
         "channels": channels,
@@ -891,8 +1002,10 @@ def channel_rename_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel_uid = request.POST.get("channel")
     name = request.POST.get("name", "").strip()
 
@@ -901,7 +1014,7 @@ def channel_rename_view(request):
 
     try:
         api.update_channel(endpoint, token, channel_uid, name)
-        cache.delete(_channels_cache_key(endpoint, token))
+        _invalidate_channels_cache(endpoint, token)
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -915,8 +1028,10 @@ def channel_delete_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel_uid = request.POST.get("channel")
 
     if not channel_uid:
@@ -924,7 +1039,7 @@ def channel_delete_view(request):
 
     try:
         api.delete_channel(endpoint, token, channel_uid)
-        cache.delete(_channels_cache_key(endpoint, token))
+        _invalidate_channels_cache(endpoint, token)
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError as exc:
         return HttpResponse(str(exc), status=502)
@@ -938,8 +1053,10 @@ def channel_order_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel_uids = request.POST.getlist("channels[]")
 
     if not channel_uids:
@@ -947,7 +1064,7 @@ def channel_order_view(request):
 
     try:
         api.order_channels(endpoint, token, channel_uids)
-        cache.delete(_channels_cache_key(endpoint, token))
+        _invalidate_channels_cache(endpoint, token)
         _all_channels, channels, _notifications_channel = _load_channels_for_ui(endpoint, token)
     except api.MicrosubError:
         return HttpResponse(status=502)
@@ -964,8 +1081,10 @@ def feed_search_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     query = request.POST.get("query", "").strip()
     channel_uid = request.POST.get("channel", "")
 
@@ -984,8 +1103,10 @@ def feed_search_view(request):
 
 
 def feed_preview_view(request):
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     url = request.GET.get("url", "").strip()
 
     if not url:
@@ -1003,8 +1124,10 @@ def feed_preview_view(request):
 
 
 def feed_list_view(request, channel_uid):
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
 
     try:
         result = api.get_follows(endpoint, token, channel_uid)
@@ -1021,8 +1144,10 @@ def feed_follow_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel_uid = request.POST.get("channel")
     url = request.POST.get("url", "").strip()
 
@@ -1045,8 +1170,10 @@ def feed_unfollow_view(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    endpoint = request.session["microsub_endpoint"]
-    token = request.session["access_token"]
+    credentials = _get_microsub_credentials(request)
+    if credentials is None:
+        return redirect("login")
+    endpoint, token = credentials
     channel_uid = request.POST.get("channel")
     url = request.POST.get("url", "").strip()
 
@@ -1368,8 +1495,10 @@ def _handle_simple_micropub_interaction(request, kind):
     if not mp_endpoint:
         return HttpResponse("Micropub not available", status=400)
 
-    token = request.session["access_token"]
-    user_url = request.session["user_url"]
+    token = request.session.get("access_token")
+    user_url = request.session.get("user_url")
+    if not token or not user_url:
+        return redirect("login")
     entry_url = request.POST.get("entry_url")
     if not entry_url:
         return HttpResponse(status=400)
@@ -1412,8 +1541,10 @@ def micropub_reply_view(request):
     if not mp_endpoint:
         return HttpResponse("Micropub not available", status=400)
 
-    token = request.session["access_token"]
-    user_url = request.session["user_url"]
+    token = request.session.get("access_token")
+    user_url = request.session.get("user_url")
+    if not token or not user_url:
+        return redirect("login")
     entry_url = request.POST.get("entry_url")
     if not entry_url:
         return HttpResponse("Entry URL is required", status=400)
@@ -1615,7 +1746,7 @@ def account_export_view(request):
     )
 
     payload = {
-        "exported_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "exported_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
         "user_url": user_url,
         "settings": {
             "default_filter": user_settings.default_filter,

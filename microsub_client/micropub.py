@@ -1,6 +1,8 @@
 import requests
 from requests.exceptions import RequestException
 
+from .outbound import UnsafeOutboundURLError, parse_json_response, safe_request
+
 
 class MicropubError(Exception):
     pass
@@ -13,13 +15,16 @@ class AuthenticationError(MicropubError):
 def _post(endpoint, token, data):
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.post(
+        resp = safe_request(
             endpoint,
+            send=requests.post,
             headers=headers,
             data=data,
             timeout=15,
             allow_redirects=False,
         )
+    except UnsafeOutboundURLError as exc:
+        raise MicropubError(f"Network error: {exc}") from exc
     except RequestException as exc:
         raise MicropubError(f"Network error: {exc}") from exc
 
@@ -50,12 +55,16 @@ def repost(endpoint, token, url):
 def query_config(endpoint, token):
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.get(
+        resp = safe_request(
             endpoint,
+            send=requests.get,
             headers=headers,
             params={"q": "config"},
             timeout=15,
+            allow_redirects=True,
         )
+    except UnsafeOutboundURLError as exc:
+        raise MicropubError(f"Network error: {exc}") from exc
     except RequestException as exc:
         raise MicropubError(f"Network error: {exc}") from exc
 
@@ -66,19 +75,22 @@ def query_config(endpoint, token):
             f"Micropub config error: {resp.status_code} {resp.text[:200]}"
         )
 
-    return resp.json()
+    return parse_json_response(resp, MicropubError, "Micropub config error")
 
 
 def upload_media(media_endpoint, token, file):
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.post(
+        resp = safe_request(
             media_endpoint,
+            send=requests.post,
             headers=headers,
             files={"file": (file.name, file, file.content_type)},
             timeout=30,
             allow_redirects=False,
         )
+    except UnsafeOutboundURLError as exc:
+        raise MicropubError(f"Network error: {exc}") from exc
     except RequestException as exc:
         raise MicropubError(f"Network error: {exc}") from exc
 

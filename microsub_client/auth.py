@@ -10,6 +10,14 @@ from requests.exceptions import RequestException
 
 from django.core.cache import cache
 
+from .outbound import (
+    UnsafeOutboundURLError,
+    normalize_url,
+    parse_json_response,
+    safe_request,
+    validate_outbound_url,
+)
+
 HCARD_CACHE_TTL = 3600       # 1 hour
 ENDPOINTS_CACHE_TTL = 300    # 5 minutes
 
@@ -24,12 +32,17 @@ def _endpoints_cache_key(url: str) -> str:
 
 def _fetch_hcard_uncached(url):
     """Fetch and parse h-card from a URL. Returns dict with 'name' and 'photo'."""
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
+    url = normalize_url(url)
     try:
-        resp = requests.get(url, timeout=10, headers={"Accept": "text/html"})
+        resp = safe_request(
+            url,
+            send=requests.get,
+            timeout=10,
+            headers={"Accept": "text/html"},
+            allow_redirects=True,
+        )
         resp.raise_for_status()
-    except RequestException:
+    except (RequestException, UnsafeOutboundURLError):
         return {"name": None, "photo": None}
 
     parsed = mf2py.parse(resp.text, url=url)
@@ -61,10 +74,7 @@ def _discover_endpoints_uncached(url):
     Checks both HTML <link> tags and HTTP Link headers.
     Returns dict with keys: authorization_endpoint, token_endpoint, microsub.
     """
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    if not url.endswith("/"):
-        url += "/"
+    url = normalize_url(url, trailing_slash=True)
 
     endpoints = {
         "authorization_endpoint": None,
@@ -74,10 +84,25 @@ def _discover_endpoints_uncached(url):
     }
 
     try:
-        resp = requests.get(url, timeout=10, headers={"Accept": "text/html"})
+        resp = safe_request(
+            url,
+            send=requests.get,
+            timeout=10,
+            headers={"Accept": "text/html"},
+            allow_redirects=True,
+        )
         resp.raise_for_status()
+    except UnsafeOutboundURLError as exc:
+        raise ValueError(str(exc)) from exc
     except RequestException as exc:
         raise ValueError(f"Could not fetch {url}: {exc}") from exc
+
+    def _safe_endpoint(href):
+        candidate = urljoin(url, href)
+        try:
+            return validate_outbound_url(candidate)
+        except UnsafeOutboundURLError:
+            return None
 
     # Check HTTP Link headers
     link_header = resp.headers.get("Link", "")
@@ -86,8 +111,7 @@ def _discover_endpoints_uncached(url):
             pattern = rf'<([^>]+)>;\s*rel="{re.escape(rel)}"'
             match = re.search(pattern, part)
             if match:
-                href = match.group(1)
-                endpoints[rel] = urljoin(url, href)
+                endpoints[rel] = _safe_endpoint(match.group(1))
 
     # Check HTML <link> tags (overrides headers if both present)
     html = resp.text
@@ -95,12 +119,12 @@ def _discover_endpoints_uncached(url):
         pattern = rf'<link[^>]+rel="{re.escape(rel)}"[^>]+href="([^"]+)"'
         match = re.search(pattern, html)
         if match:
-            endpoints[rel] = urljoin(url, match.group(1))
+            endpoints[rel] = _safe_endpoint(match.group(1))
         # Also try reversed attribute order
         pattern = rf'<link[^>]+href="([^"]+)"[^>]+rel="{re.escape(rel)}"'
         match = re.search(pattern, html)
         if match:
-            endpoints[rel] = urljoin(url, match.group(1))
+            endpoints[rel] = _safe_endpoint(match.group(1))
 
     return endpoints
 
@@ -158,17 +182,21 @@ def exchange_code_for_token(token_endpoint, code, redirect_uri, client_id, code_
         "code_verifier": code_verifier,
     }
     try:
-        resp = requests.post(
+        resp = safe_request(
             token_endpoint,
+            send=requests.post,
             data=data,
             headers={"Accept": "application/json"},
             timeout=10,
+            allow_redirects=False,
         )
         resp.raise_for_status()
+    except UnsafeOutboundURLError as exc:
+        raise ValueError(f"Token exchange failed: {exc}") from exc
     except RequestException as exc:
         raise ValueError(f"Token exchange failed: {exc}") from exc
 
-    result = resp.json()
+    result = parse_json_response(resp, ValueError, "Token exchange failed")
     if "access_token" not in result:
         error = result.get("error_description", result.get("error", "Unknown error"))
         raise ValueError(f"Token exchange failed: {error}")

@@ -52,6 +52,13 @@ class FetchHcardTests(TestCase):
         self.assertIsNone(result["name"])
         self.assertIsNone(result["photo"])
 
+    @patch("microsub_client.auth.requests.get")
+    def test_private_url_returns_none_without_fetching(self, mock_get):
+        result = fetch_hcard("http://127.0.0.1/profile")
+        self.assertIsNone(result["name"])
+        self.assertIsNone(result["photo"])
+        mock_get.assert_not_called()
+
 
 class DiscoverEndpointsTests(TestCase):
     @patch("microsub_client.auth.requests.get")
@@ -122,6 +129,36 @@ class DiscoverEndpointsTests(TestCase):
         mock_get.return_value.raise_for_status = Mock()
         result = discover_endpoints("https://user.example/")
         self.assertEqual(result["authorization_endpoint"], "https://auth.example/auth")
+
+    @patch("microsub_client.auth.requests.get")
+    def test_rejects_private_input_url(self, mock_get):
+        with self.assertRaises(ValueError):
+            discover_endpoints("http://127.0.0.1/")
+        mock_get.assert_not_called()
+
+    @patch("microsub_client.auth.requests.get")
+    def test_discards_private_discovered_endpoints(self, mock_get):
+        html = '''
+        <html><head>
+        <link rel="authorization_endpoint" href="https://auth.example/auth">
+        <link rel="token_endpoint" href="http://127.0.0.1/token">
+        <link rel="microsub" href="https://reader.example/microsub">
+        </head></html>
+        '''
+        mock_get.return_value = Mock(status_code=200, text=html, headers={})
+        mock_get.return_value.raise_for_status = Mock()
+        result = discover_endpoints("https://user.example/")
+        self.assertEqual(result["authorization_endpoint"], "https://auth.example/auth")
+        self.assertIsNone(result["token_endpoint"])
+        self.assertEqual(result["microsub"], "https://reader.example/microsub")
+
+    @patch("microsub_client.auth.requests.get")
+    def test_rejects_redirect_to_private_host(self, mock_get):
+        redirect = Mock(status_code=302, headers={"Location": "http://127.0.0.1/"})
+        redirect.raise_for_status = Mock()
+        mock_get.return_value = redirect
+        with self.assertRaises(ValueError):
+            discover_endpoints("https://user.example/")
 
 
 class GeneratePkcePairTests(TestCase):
@@ -196,6 +233,17 @@ class ExchangeCodeForTokenTests(TestCase):
     def test_raises_on_network_error(self, mock_post):
         from requests.exceptions import RequestException
         mock_post.side_effect = RequestException("fail")
+        with self.assertRaises(ValueError):
+            exchange_code_for_token(
+                "https://auth.example/token", "code123",
+                "https://app.example/callback", "https://app.example/id", "verifier",
+            )
+
+    @patch("microsub_client.auth.requests.post")
+    def test_raises_on_invalid_json(self, mock_post):
+        mock_post.return_value = Mock(status_code=200)
+        mock_post.return_value.raise_for_status = Mock()
+        mock_post.return_value.json.side_effect = ValueError("bad json")
         with self.assertRaises(ValueError):
             exchange_code_for_token(
                 "https://auth.example/token", "code123",

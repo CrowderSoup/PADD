@@ -1,12 +1,17 @@
+import json
 import logging
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from defusedxml.common import DefusedXmlException
+from django.core.cache import cache
 from django.core.files.uploadedfile import InMemoryUploadedFile, SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 _quiet_request = logging.getLogger("django.request")
 _quiet_request.setLevel(logging.CRITICAL)
+_quiet_microsub_views = logging.getLogger("microsub_client.views")
+_quiet_microsub_views.setLevel(logging.CRITICAL)
 
 from microsub_client import api, micropub
 from microsub_client.models import (
@@ -18,6 +23,7 @@ from microsub_client.models import (
     KnownUser,
     UserSettings,
 )
+from microsub_client.views import CHANNELS_CACHE_TTL, _channels_cache_key
 
 from .conftest import SIMPLE_STORAGES, auth_session
 
@@ -100,6 +106,11 @@ class LoginViewTests(TestCase):
     def test_missing_microsub_endpoint_shows_error(self, _mock):
         response = self.client.post("/login/", {"url": "https://user.example/"})
         self.assertContains(response, "Microsub endpoint")
+
+    def test_private_url_shows_error(self):
+        response = self.client.post("/login/", {"url": "http://127.0.0.1/"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Private or special-use network addresses are not allowed")
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -219,6 +230,30 @@ class MarkReadViewTests(TestCase):
         session.save()
         response = self.client.post("/api/mark-read/", {"channel": "ch1", "entry": "e1"})
         self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.content, b"fail")
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "ch1", "name": "One", "unread": 0}])
+    @patch("microsub_client.views.api.mark_read")
+    def test_success_invalidates_channel_cache(self, mock_mark, mock_channels):
+        mock_mark.return_value = {}
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        cache.set(
+            _channels_cache_key("https://microsub.example/", "test-token"),
+            [{"uid": "ch1", "name": "One", "unread": 9}],
+            CHANNELS_CACHE_TTL,
+        )
+        response = self.client.post("/api/mark-read/", {"channel": "ch1", "entry": "e1"})
+        self.assertEqual(response.status_code, 200)
+        mock_channels.assert_called_once()
+
+    def test_missing_microsub_endpoint_redirects_to_login(self):
+        session = self.client.session
+        session.update({"access_token": "test-token"})
+        session.save()
+        response = self.client.post("/api/mark-read/", {"channel": "ch1", "entry": "e1"})
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -268,6 +303,16 @@ class MicropubLikeViewTests(TestCase):
             Interaction.objects.filter(kind="like", entry__url="https://example.com/post").count(),
             1,
         )
+
+    def test_missing_user_url_redirects_to_login(self):
+        session = self.client.session
+        session.update({
+            "access_token": "test-token",
+            "micropub_endpoint": "https://micropub.example/",
+        })
+        session.save()
+        response = self.client.post("/api/micropub/like/", {"entry_url": "https://example.com/post"})
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -543,6 +588,23 @@ class MarkUnreadViewTests(TestCase):
         session.save()
         response = self.client.post("/api/mark-unread/", {"channel": "ch1", "entry": "e1"})
         self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.content, b"fail")
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "ch1", "name": "One", "unread": 1}])
+    @patch("microsub_client.views.api.mark_unread")
+    def test_success_invalidates_channel_cache(self, mock_mark, mock_channels):
+        mock_mark.return_value = {}
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        cache.set(
+            _channels_cache_key("https://microsub.example/", "test-token"),
+            [{"uid": "ch1", "name": "One", "unread": 0}],
+            CHANNELS_CACHE_TTL,
+        )
+        response = self.client.post("/api/mark-unread/", {"channel": "ch1", "entry": "e1"})
+        self.assertEqual(response.status_code, 200)
+        mock_channels.assert_called_once()
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -579,6 +641,7 @@ class RemoveEntryViewTests(TestCase):
         session.save()
         response = self.client.post("/api/timeline/remove/", {"channel": "ch1", "entry": "e1"})
         self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.content, b"fail")
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -652,6 +715,22 @@ class ChannelMarkReadViewTests(TestCase):
         session.save()
         response = self.client.post("/api/channels/mark-read/", {"channel": "ch1"})
         self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.content, b"fail")
+
+    @patch("microsub_client.views.api.get_channels", return_value=[{"uid": "ch1", "name": "One", "unread": 0}])
+    @patch("microsub_client.views.api.mark_channel_read", return_value={})
+    def test_success_invalidates_channel_cache(self, _mock_mark, mock_channels):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        cache.set(
+            _channels_cache_key("https://microsub.example/", "test-token"),
+            [{"uid": "ch1", "name": "One", "unread": 5}],
+            CHANNELS_CACHE_TTL,
+        )
+        response = self.client.post("/api/channels/mark-read/", {"channel": "ch1"})
+        self.assertEqual(response.status_code, 200)
+        mock_channels.assert_called_once()
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -1573,6 +1652,13 @@ class ModerationViewTests(TestCase):
             "https://alice.example/",
         )
 
+    @patch("microsub_client.views.api.mute_user", side_effect=api.MicrosubError("fail"))
+    def test_mute_error_includes_message(self, _mock_mute):
+        self._auth_session()
+        response = self.client.post("/api/mute/", {"author_url": "https://alice.example/", "channel": "main"})
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.content, b"fail")
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class DraftEndpointsTests(TestCase):
@@ -1669,6 +1755,111 @@ class OpmlViewsTests(TestCase):
             "tech",
             "https://feeds.example/python.xml",
         )
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class AccountViewsTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def test_account_export_returns_json_attachment(self):
+        self._auth_session()
+        settings_obj = UserSettings.objects.create(
+            user_url="https://me.example/",
+            default_filter="unread",
+            expand_content=True,
+        )
+        Draft.objects.create(user_url="https://me.example/", title="Draft", content="Body")
+        entry = CachedEntry.objects.create(url="https://post.example/1", title="Post")
+        Interaction.objects.create(
+            user_url="https://me.example/",
+            entry=entry,
+            kind="like",
+            result_url="https://me.example/likes/1",
+        )
+
+        response = self.client.get("/account/export/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json; charset=utf-8")
+        self.assertIn("attachment; filename=", response["Content-Disposition"])
+        payload = json.loads(response.content)
+        self.assertEqual(payload["user_url"], "https://me.example/")
+        self.assertEqual(payload["settings"]["default_filter"], settings_obj.default_filter)
+        self.assertEqual(len(payload["drafts"]), 1)
+        self.assertEqual(len(payload["interactions"]), 1)
+
+    def test_account_delete_removes_user_data(self):
+        self._auth_session()
+        broadcast = Broadcast.objects.create(message="Hello")
+        UserSettings.objects.create(user_url="https://me.example/")
+        Draft.objects.create(user_url="https://me.example/", title="Draft")
+        entry = CachedEntry.objects.create(url="https://post.example/1")
+        Interaction.objects.create(user_url="https://me.example/", entry=entry, kind="reply")
+        DismissedBroadcast.objects.create(user_url="https://me.example/", broadcast=broadcast)
+        KnownUser.objects.create(url="https://me.example/", name="Me")
+
+        response = self.client.post("/account/delete/", {"confirm_url": "https://me.example/"})
+
+        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertFalse(UserSettings.objects.filter(user_url="https://me.example/").exists())
+        self.assertFalse(Draft.objects.filter(user_url="https://me.example/").exists())
+        self.assertFalse(Interaction.objects.filter(user_url="https://me.example/").exists())
+        self.assertFalse(DismissedBroadcast.objects.filter(user_url="https://me.example/").exists())
+        self.assertFalse(KnownUser.objects.filter(url="https://me.example/").exists())
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class EmbedPostViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    @patch("requests.get")
+    def test_renders_mastodon_embed(self, mock_get):
+        mock_get.return_value = Mock(
+            status_code=200,
+            headers={},
+            json=lambda: {
+                "account": {"display_name": "Alice", "avatar": "https://cdn.example/a.jpg"},
+                "content": "<p>Hello there</p>",
+                "url": "https://social.example/@alice/123",
+            },
+        )
+        mock_get.return_value.raise_for_status = Mock()
+        self._auth_session()
+
+        response = self.client.get("/api/embed-post/", {"url": "https://social.example/@alice/123"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alice")
+        self.assertContains(response, "View on Mastodon")
+
+    @patch("requests.get")
+    def test_private_host_falls_back_without_fetching(self, mock_get):
+        self._auth_session()
+
+        response = self.client.get("/api/embed-post/", {"url": "https://127.0.0.1/@alice/123"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "View on Mastodon")
+        mock_get.assert_not_called()
+
+    @patch("requests.get")
+    def test_redirect_to_private_host_falls_back(self, mock_get):
+        redirect = Mock(status_code=302, headers={"Location": "http://127.0.0.1/"})
+        redirect.raise_for_status = Mock()
+        mock_get.return_value = redirect
+        self._auth_session()
+
+        response = self.client.get("/api/embed-post/", {"url": "https://social.example/@alice/123"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "View on Mastodon")
+        self.assertNotContains(response, "Alice")
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
