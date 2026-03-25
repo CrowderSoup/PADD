@@ -29,13 +29,16 @@ _DOCUMENTATION_SUFFIXES = (
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 
 
-def normalize_url(url: str, default_scheme: str = "https", trailing_slash: bool = False) -> str:
+def normalize_url(url: str, trailing_slash: bool = False) -> str:
     normalized = (url or "").strip()
     if not normalized:
         raise UnsafeOutboundURLError("Please enter a URL.")
-    if "://" not in normalized:
-        normalized = f"{default_scheme}://{normalized}"
-    if trailing_slash and not normalized.endswith("/"):
+    if normalized.startswith("http://"):
+        normalized = "https://" + normalized[len("http://"):]
+    elif "://" not in normalized:
+        normalized = f"https://{normalized}"
+    normalized = normalized.rstrip("/")
+    if trailing_slash:
         normalized += "/"
     return normalized
 

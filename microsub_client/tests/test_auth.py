@@ -37,6 +37,14 @@ class FetchHcardTests(TestCase):
         self.assertTrue(mock_get.call_args[0][0].startswith("https://"))
 
     @patch("microsub_client.auth.requests.get")
+    def test_upgrades_http_to_https(self, mock_get):
+        mock_get.return_value = Mock(status_code=200, text="<html></html>")
+        mock_get.return_value.raise_for_status = Mock()
+        fetch_hcard("http://me.example/")
+        mock_get.assert_called_once()
+        self.assertTrue(mock_get.call_args[0][0].startswith("https://"))
+
+    @patch("microsub_client.auth.requests.get")
     def test_returns_none_on_network_error(self, mock_get):
         from requests.exceptions import RequestException
         mock_get.side_effect = RequestException("fail")
@@ -99,6 +107,21 @@ class DiscoverEndpointsTests(TestCase):
         mock_get.return_value = Mock(status_code=200, text="<html></html>", headers={})
         mock_get.return_value.raise_for_status = Mock()
         discover_endpoints("user.example")
+        self.assertEqual(mock_get.call_args[0][0], "https://user.example/")
+
+    @patch("microsub_client.auth.requests.get")
+    def test_upgrades_http_to_https(self, mock_get):
+        mock_get.return_value = Mock(status_code=200, text="<html></html>", headers={})
+        mock_get.return_value.raise_for_status = Mock()
+        discover_endpoints("http://user.example/")
+        self.assertEqual(mock_get.call_args[0][0], "https://user.example/")
+
+    @patch("microsub_client.auth.requests.get")
+    def test_strips_trailing_slash_from_input(self, mock_get):
+        mock_get.return_value = Mock(status_code=200, text="<html></html>", headers={})
+        mock_get.return_value.raise_for_status = Mock()
+        # Whether trailing slash is passed in or not, discovery fetches with one
+        discover_endpoints("https://user.example/")
         self.assertEqual(mock_get.call_args[0][0], "https://user.example/")
 
     @patch("microsub_client.auth.requests.get")

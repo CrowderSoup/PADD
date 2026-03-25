@@ -76,6 +76,42 @@ class LoginViewTests(TestCase):
         self.assertEqual(response["Location"], "https://auth.example/next")
         self.assertEqual(mock_build.call_args.kwargs["client_id"], "http://testserver/id")
 
+    @patch("microsub_client.views.generate_pkce_pair", return_value=("verifier", "challenge"))
+    @patch("microsub_client.views.discover_endpoints", return_value={
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+        "microsub": "https://user.example/microsub",
+        "micropub": None,
+    })
+    @patch("microsub_client.views.build_authorization_url", return_value="https://auth.example/next")
+    def test_login_stores_canonical_url_without_trailing_slash(self, _mock_build, _mock_disc, _mock_pkce):
+        self.client.post("/login/", {"url": "https://user.example/"})
+        self.assertEqual(self.client.session["user_url"], "https://user.example")
+
+    @patch("microsub_client.views.generate_pkce_pair", return_value=("verifier", "challenge"))
+    @patch("microsub_client.views.discover_endpoints", return_value={
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+        "microsub": "https://user.example/microsub",
+        "micropub": None,
+    })
+    @patch("microsub_client.views.build_authorization_url", return_value="https://auth.example/next")
+    def test_login_upgrades_http_to_https(self, _mock_build, _mock_disc, _mock_pkce):
+        self.client.post("/login/", {"url": "http://user.example/"})
+        self.assertEqual(self.client.session["user_url"], "https://user.example")
+
+    @patch("microsub_client.views.generate_pkce_pair", return_value=("verifier", "challenge"))
+    @patch("microsub_client.views.discover_endpoints", return_value={
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+        "microsub": "https://user.example/microsub",
+        "micropub": None,
+    })
+    @patch("microsub_client.views.build_authorization_url", return_value="https://auth.example/next")
+    def test_login_prepends_https_when_no_protocol(self, _mock_build, _mock_disc, _mock_pkce):
+        self.client.post("/login/", {"url": "user.example"})
+        self.assertEqual(self.client.session["user_url"], "https://user.example")
+
     @patch("microsub_client.views.discover_endpoints", return_value={
         "authorization_endpoint": None,
         "token_endpoint": "https://auth.example/token",

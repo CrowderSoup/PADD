@@ -121,7 +121,7 @@ def login_view(request):
             error = "Please enter your domain."
         else:
             try:
-                normalized_url = normalize_url(url, trailing_slash=True)
+                normalized_url = normalize_url(url)
                 endpoints = discover_endpoints(normalized_url)
                 if not endpoints["authorization_endpoint"]:
                     error = "Could not find an authorization endpoint for that URL."
