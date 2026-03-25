@@ -82,7 +82,7 @@ The dev setup uses Caddy for automatic TLS, which is useful for testing IndieAut
 ## Running Tests
 
 ```bash
-uv run manage.py test
+uv run pytest
 ```
 
 ## Architecture

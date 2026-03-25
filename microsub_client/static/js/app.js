@@ -282,6 +282,14 @@ var _errorPaths = [
   '/api/mark-unread/',
 ];
 
+function getRequestErrorMessage(xhr) {
+  if (!xhr || typeof xhr.responseText !== 'string') return '';
+  var text = xhr.responseText.trim();
+  if (!text || text.charAt(0) === '<') return '';
+  if (text.length <= 180) return text;
+  return text.slice(0, 177) + '...';
+}
+
 document.body.addEventListener('htmx:afterRequest', function(evt) {
   var path = evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
   if (!path) return;
@@ -295,7 +303,10 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
 
     var isInteractionPath = _errorPaths.some(function(p) { return path.indexOf(p) !== -1; });
     if (isInteractionPath) {
-      showToast('Something went wrong. Please try again.', 'error');
+      showToast(
+        getRequestErrorMessage(evt.detail.xhr) || 'Something went wrong. Please try again.',
+        'error'
+      );
     }
   } else {
     var isSettingsSave = path.indexOf('/settings/') !== -1 && method === 'post';

@@ -29,14 +29,28 @@ class ApiRequestTests(TestCase):
 
     @patch("microsub_client.api.requests.request")
     def test_500_raises_microsub_error(self, mock_req):
-        mock_req.return_value = Mock(status_code=500, ok=False)
-        with self.assertRaises(api.MicrosubError):
+        mock_req.return_value = Mock(status_code=500, ok=False, text="upstream exploded")
+        with self.assertRaises(api.MicrosubError) as ctx:
             api._request("GET", "https://api.example/", "token")
+        self.assertEqual(str(ctx.exception), "Microsub API error: 500 (upstream exploded)")
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.response_text, "upstream exploded")
 
     @patch("microsub_client.api.requests.request")
     def test_network_error_raises_microsub_error(self, mock_req):
         from requests.exceptions import RequestException
         mock_req.side_effect = RequestException("fail")
+        with self.assertRaises(api.MicrosubError):
+            api._request("GET", "https://api.example/", "token")
+
+    @patch("microsub_client.api.requests.request")
+    def test_invalid_json_raises_microsub_error(self, mock_req):
+        mock_req.return_value = Mock(
+            status_code=200,
+            ok=True,
+            content=b"{",
+        )
+        mock_req.return_value.json.side_effect = ValueError("bad json")
         with self.assertRaises(api.MicrosubError):
             api._request("GET", "https://api.example/", "token")
 
