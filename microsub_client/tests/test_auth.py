@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 from django.test import TestCase
 
 from microsub_client.auth import (
+    REQUESTED_SCOPE,
     build_authorization_url,
     discover_endpoints,
     exchange_code_for_token,
@@ -222,7 +223,7 @@ class BuildAuthorizationUrlTests(TestCase):
         self.assertIn("code_challenge=test-challenge", url)
         self.assertIn("code_challenge_method=S256", url)
         self.assertIn("response_type=code", url)
-        self.assertIn("scope=read+follow+channels+create", url)
+        self.assertIn(f"scope={REQUESTED_SCOPE.replace(' ', '+')}", url)
 
 
 class ExchangeCodeForTokenTests(TestCase):

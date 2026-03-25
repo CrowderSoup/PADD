@@ -14,6 +14,7 @@ _quiet_microsub_views = logging.getLogger("microsub_client.views")
 _quiet_microsub_views.setLevel(logging.CRITICAL)
 
 from microsub_client import api, micropub
+from microsub_client.auth import REQUESTED_SCOPE
 from microsub_client.models import (
     Broadcast,
     CachedEntry,
@@ -40,7 +41,7 @@ class ClientIdMetadataViewTests(TestCase):
         self.assertEqual(body["client_uri"], "http://testserver/")
         self.assertTrue(body["logo_uri"].startswith("http://testserver/static/logo"))
         self.assertEqual(body["redirect_uris"], ["http://testserver/login/callback/"])
-        self.assertEqual(body["scope"], "read follow channels create")
+        self.assertEqual(body["scope"], REQUESTED_SCOPE)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
@@ -168,7 +169,7 @@ class CallbackViewTests(TestCase):
 
     @patch("microsub_client.views.fetch_hcard", return_value={"name": "Jane", "photo": None})
     @patch("microsub_client.views.exchange_code_for_token", return_value={
-        "access_token": "tok123", "me": "https://me.example/",
+        "access_token": "tok123", "me": "https://me.example/", "scope": REQUESTED_SCOPE,
     })
     def test_successful_callback_sets_session(self, _mock_exchange, _mock_hcard):
         session = self.client.session
@@ -182,6 +183,7 @@ class CallbackViewTests(TestCase):
         self.assertRedirects(response, "/app/", fetch_redirect_response=False)
         session = self.client.session
         self.assertEqual(session["access_token"], "tok123")
+        self.assertEqual(session["granted_scope"], REQUESTED_SCOPE)
         self.assertEqual(session["user_name"], "Jane")
         self.assertNotIn("auth_state", session)
         self.assertNotIn("code_verifier", session)
@@ -1694,6 +1696,27 @@ class ModerationViewTests(TestCase):
         response = self.client.post("/api/mute/", {"author_url": "https://alice.example/", "channel": "main"})
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.content, b"fail")
+
+    @patch("microsub_client.views.logger")
+    @patch(
+        "microsub_client.views.api.mute_user",
+        side_effect=api.MicrosubError(
+            'Microsub API error: 403 ({"error": "insufficient_scope"})',
+            status_code=403,
+            response_text='{"error": "insufficient_scope"}',
+        ),
+    )
+    def test_mute_insufficient_scope_logs_granted_and_requested_scopes(self, _mock_mute, mock_logger):
+        self._auth_session()
+        session = self.client.session
+        session["granted_scope"] = "read follow channels create"
+        session.save()
+
+        self.client.post("/api/mute/", {"author_url": "https://alice.example/", "channel": "main"})
+
+        log_details = mock_logger.warning.call_args.args[4]
+        self.assertIn("granted_scope=read follow channels create", log_details)
+        self.assertIn(f"requested_scope={REQUESTED_SCOPE}", log_details)
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)

@@ -20,6 +20,10 @@ from .outbound import (
 
 HCARD_CACHE_TTL = 3600       # 1 hour
 ENDPOINTS_CACHE_TTL = 300    # 5 minutes
+MICROSUB_SCOPES = ("read", "follow", "mute", "block", "channels")
+MICROPUB_SCOPES = ("create",)
+REQUESTED_SCOPES = (*MICROSUB_SCOPES, *MICROPUB_SCOPES)
+REQUESTED_SCOPE = " ".join(REQUESTED_SCOPES)
 
 
 def _hcard_cache_key(url: str) -> str:
@@ -160,7 +164,7 @@ def build_authorization_url(
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "state": state,
-        "scope": "read follow channels create",
+        "scope": REQUESTED_SCOPE,
         "response_type": "code",
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",

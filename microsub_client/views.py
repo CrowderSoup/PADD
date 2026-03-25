@@ -20,6 +20,7 @@ from django.conf import settings
 
 from . import api, image_utils, micropub
 from .auth import (
+    REQUESTED_SCOPE,
     build_authorization_url,
     discover_endpoints,
     exchange_code_for_token,
@@ -65,6 +66,16 @@ def _client_id(request):
 
 
 def _microsub_failure_response(request, endpoint, action, exc, **context):
+    granted_scope = request.session.get("granted_scope")
+    if granted_scope and "granted_scope" not in context:
+        context = {"granted_scope": granted_scope, **context}
+    if (
+        getattr(exc, "status_code", None) == 403
+        and getattr(exc, "response_text", "")
+        and "insufficient_scope" in exc.response_text
+        and "requested_scope" not in context
+    ):
+        context = {"requested_scope": REQUESTED_SCOPE, **context}
     details = ", ".join(
         f"{key}={value}"
         for key, value in context.items()
@@ -91,7 +102,7 @@ def client_id_metadata_view(request):
             "client_uri": client_uri,
             "logo_uri": request.build_absolute_uri(static("logo.svg")),
             "redirect_uris": [request.build_absolute_uri("/login/callback/")],
-            "scope": "read follow channels create",
+            "scope": REQUESTED_SCOPE,
         }
     )
 
@@ -185,6 +196,10 @@ def callback_view(request):
         return redirect("login")
 
     request.session["access_token"] = result["access_token"]
+    if result.get("scope"):
+        request.session["granted_scope"] = result["scope"]
+    else:
+        request.session.pop("granted_scope", None)
     # Clean up temporary auth state
     request.session.pop("auth_state", None)
     request.session.pop("token_endpoint", None)
