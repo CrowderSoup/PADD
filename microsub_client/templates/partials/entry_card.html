@@ -183,7 +183,10 @@
             </div>
           {% endif %}
         </div>
-        <button class="lcars-expand-btn" onclick="this.parentElement.classList.toggle('lcars-expanded'); this.textContent = this.parentElement.classList.contains('lcars-expanded') ? 'Collapse' : 'Expand';" type="button">{% if expand_content %}Collapse{% else %}Expand{% endif %}</button>
+        <button class="lcars-expand-btn"
+                data-collapsible-toggle="1"
+                aria-expanded="{% if expand_content %}true{% else %}false{% endif %}"
+                type="button">{% if expand_content %}Collapse{% else %}Expand{% endif %}</button>
       </div>
     {% endif %}
 

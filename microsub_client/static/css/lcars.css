@@ -1183,7 +1183,8 @@ body {
   position: relative;
   max-height: 200px;
   overflow: hidden;
-  transition: max-height 0.3s ease;
+  transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: max-height;
 }
 
 .lcars-entry-collapse-inner::after {
@@ -1204,6 +1205,13 @@ body {
 
 .lcars-expanded .lcars-entry-collapse-inner::after {
   opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lcars-entry-collapse-inner,
+  .lcars-entry-collapse-inner::after {
+    transition: none;
+  }
 }
 
 .lcars-expand-btn {

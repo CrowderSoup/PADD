@@ -93,21 +93,95 @@ function replyFormAfterRequest(form, event) {
   }
 }
 
+var COLLAPSIBLE_PREVIEW_HEIGHT = 200;
+
+function syncCollapsibleButton(el) {
+  var btn = el.querySelector('.lcars-expand-btn');
+  if (!btn) return;
+  var expanded = el.classList.contains('lcars-expanded');
+  btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  btn.textContent = expanded ? 'Collapse' : 'Expand';
+}
+
+function clearCollapsibleTransition(inner) {
+  if (inner._collapseTransitionHandler) {
+    inner.removeEventListener('transitionend', inner._collapseTransitionHandler);
+    inner._collapseTransitionHandler = null;
+  }
+}
+
+function setCollapsibleExpanded(el, expanded, immediate) {
+  var inner = el.querySelector('.lcars-entry-collapse-inner');
+  if (!inner) return;
+
+  var reduceMotion = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var skipAnimation = immediate || reduceMotion;
+
+  clearCollapsibleTransition(inner);
+
+  if (skipAnimation) {
+    el.classList.toggle('lcars-expanded', expanded);
+    inner.style.maxHeight = expanded ? 'none' : COLLAPSIBLE_PREVIEW_HEIGHT + 'px';
+    syncCollapsibleButton(el);
+    return;
+  }
+
+  var currentHeight = inner.getBoundingClientRect().height;
+  inner.style.maxHeight = currentHeight + 'px';
+  inner.offsetHeight;
+
+  el.classList.toggle('lcars-expanded', expanded);
+  syncCollapsibleButton(el);
+
+  if (expanded) {
+    inner.style.maxHeight = inner.scrollHeight + 'px';
+    inner._collapseTransitionHandler = function(event) {
+      if (event.target !== inner || event.propertyName !== 'max-height') return;
+      clearCollapsibleTransition(inner);
+      if (el.classList.contains('lcars-expanded')) {
+        inner.style.maxHeight = 'none';
+      }
+    };
+    inner.addEventListener('transitionend', inner._collapseTransitionHandler);
+    return;
+  }
+
+  inner.style.maxHeight = COLLAPSIBLE_PREVIEW_HEIGHT + 'px';
+}
+
 /**
- * Auto-expands collapsible entry content that is already short enough to show in full.
- * Safe to call multiple times — skips already-initialized elements.
+ * Auto-expands collapsible entry content that is already short enough to show in full
+ * and initializes the button state for longer entries. Safe to call multiple times.
  *
  * @param {Document|HTMLElement} root
  */
 function initCollapsibles(root) {
+  var collapsibles = [];
+  if (root.matches && root.matches('.lcars-entry-collapsible:not([data-init])')) {
+    collapsibles.push(root);
+  }
   root.querySelectorAll('.lcars-entry-collapsible:not([data-init])').forEach(function(el) {
+    collapsibles.push(el);
+  });
+
+  collapsibles.forEach(function(el) {
     el.dataset.init = '1';
     var inner = el.querySelector('.lcars-entry-collapse-inner');
     var btn = el.querySelector('.lcars-expand-btn');
-    if (inner.scrollHeight <= 200) {
+    if (!inner || !btn) return;
+
+    if (inner.scrollHeight <= COLLAPSIBLE_PREVIEW_HEIGHT) {
       el.classList.add('lcars-expanded');
-      btn.style.display = 'none';
+      inner.style.maxHeight = 'none';
+      btn.hidden = true;
+      btn.setAttribute('aria-hidden', 'true');
+      return;
     }
+
+    btn.hidden = false;
+    btn.removeAttribute('aria-hidden');
+    setCollapsibleExpanded(el, el.classList.contains('lcars-expanded'), true);
   });
 }
 
@@ -182,6 +256,33 @@ document.addEventListener('click', function(e) {
   document.querySelectorAll('.lcars-user-menu-open').forEach(function(menu) {
     if (!menu.contains(e.target)) menu.classList.remove('lcars-user-menu-open');
   });
+});
+
+document.addEventListener('pointerdown', function(e) {
+  var btn = e.target.closest('.lcars-expand-btn[data-collapsible-toggle]');
+  if (btn) btn.dataset.pointerActivatedAt = String(Date.now());
+});
+
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.lcars-expand-btn[data-collapsible-toggle]');
+  if (!btn || btn.hidden) return;
+
+  e.preventDefault();
+
+  var collapsible = btn.closest('.lcars-entry-collapsible');
+  if (!collapsible) return;
+
+  setCollapsibleExpanded(
+    collapsible,
+    !collapsible.classList.contains('lcars-expanded'),
+    false
+  );
+
+  var pointerActivatedAt = Number(btn.dataset.pointerActivatedAt || 0);
+  btn.removeAttribute('data-pointer-activated-at');
+  if (pointerActivatedAt && Date.now() - pointerActivatedAt < 1000) {
+    btn.blur();
+  }
 });
 
 // Alerts dropdown toggle and lazy-load preview.

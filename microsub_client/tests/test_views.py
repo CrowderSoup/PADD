@@ -1159,6 +1159,51 @@ class TimelineViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Turtle wall")
 
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "entry-1",
+            "content": {"html": "<p>Long post preview</p>", "text": "Long post preview"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_collapsible_toggle_renders_collapsed_state_markup(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'data-collapsible-toggle="1"')
+        self.assertContains(response, 'aria-expanded="false"')
+        self.assertContains(response, '>Expand</button>', html=False)
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "entry-1",
+            "content": {"html": "<p>Long post preview</p>", "text": "Long post preview"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_collapsible_toggle_renders_expanded_state_markup_when_preference_enabled(self, _mock_ch, _mock_tl):
+        UserSettings.objects.create(
+            user_url="https://me.example/", expand_content=True
+        )
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'data-collapsible-toggle="1"')
+        self.assertContains(response, 'aria-expanded="true"')
+        self.assertContains(response, '>Collapse</button>', html=False)
+
     def test_missing_user_url_redirects_and_does_not_create_anonymous_settings(self):
         s = auth_session()
         del s["user_url"]
