@@ -1,0 +1,38 @@
+# Kamal 2 deploy config for padd (padd.crowdersoup.com)
+#
+# Redis is owned by the vtodo deployment (container: vtodo-redis on 64.23.247.60).
+# vtodo must be deployed first, or run `kamal accessory boot redis` from the vtodo repo.
+
+service: padd
+image: ghcr.io/crowdersoup/padd
+
+servers:
+  web:
+    hosts:
+      - 64.23.247.60
+
+proxy:
+  ssl: true
+  host: padd.crowdersoup.com
+
+registry:
+  server: ghcr.io
+  username: crowdersoup
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+ssh:
+  user: deploy
+  keys:
+    - ~/.ssh/crowder-cloud
+
+env:
+  clear:
+    DJANGO_ALLOWED_HOSTS: padd.crowdersoup.com,localhost,127.0.0.1
+    DJANGO_CSRF_TRUSTED_ORIGINS: https://padd.crowdersoup.com
+    PADD_ADMIN_URLS: https://crowdersoup.com
+    DJANGO_DEBUG: "False"
+  secret:
+    - DJANGO_SECRET_KEY
+    - DATABASE_URL
+    - REDIS_URL   # redis://vtodo-redis:6379/0
