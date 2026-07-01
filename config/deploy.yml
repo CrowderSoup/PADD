@@ -4,7 +4,7 @@
 # vtodo must be deployed first, or run `kamal accessory boot redis` from the vtodo repo.
 
 service: padd
-image: ghcr.io/crowdersoup/padd
+image: crowdersoup/padd
 
 servers:
   web:
@@ -14,12 +14,18 @@ servers:
 proxy:
   ssl: true
   host: padd.crowdersoup.com
+  app_port: 8000
+  healthcheck:
+    path: /up/
 
 registry:
   server: ghcr.io
   username: crowdersoup
   password:
     - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
 
 ssh:
   user: deploy
@@ -28,7 +34,7 @@ ssh:
 
 env:
   clear:
-    DJANGO_ALLOWED_HOSTS: padd.crowdersoup.com,localhost,127.0.0.1
+    DJANGO_ALLOWED_HOSTS: padd.crowdersoup.com,localhost,127.0.0.1,*
     DJANGO_CSRF_TRUSTED_ORIGINS: https://padd.crowdersoup.com
     PADD_ADMIN_URLS: https://crowdersoup.com
     DJANGO_DEBUG: "False"
