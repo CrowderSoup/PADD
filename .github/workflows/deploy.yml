@@ -25,6 +25,15 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/crowder-cloud
           chmod 600 ~/.ssh/crowder-cloud
 
+      - name: Write kamal secrets
+        run: |
+          cat > .kamal/secrets <<'EOF'
+          KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
+          DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY
+          DATABASE_URL=$DATABASE_URL
+          REDIS_URL=$REDIS_URL
+          EOF
+
       - name: Deploy
         run: kamal deploy
         env:
