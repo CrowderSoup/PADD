@@ -2,7 +2,7 @@ from django.shortcuts import redirect
 
 
 class MicrosubAuthMiddleware:
-    PUBLIC_EXACT_PATHS = {"/", "/id", "/sw.js"}
+    PUBLIC_EXACT_PATHS = {"/", "/id", "/sw.js", "/up/"}
     PUBLIC_PATH_PREFIXES = ("/login/", "/static/", "/offline/")
 
     def __init__(self, get_response):
