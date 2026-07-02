@@ -41,4 +41,4 @@ env:
   secret:
     - DJANGO_SECRET_KEY
     - DATABASE_URL
-    - REDIS_URL   # redis://vtodo-redis:6379/0
+    - REDIS_URL   # redis://vtodo-redis:6379/1
