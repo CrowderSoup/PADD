@@ -1,0 +1,11 @@
+{
+  "name": "padd-frontend-deps",
+  "private": true,
+  "description": "Tracks the versions of third-party assets loaded from CDN in microsub_client/templates/base.html, so Dependabot can flag updates. Not installed or bundled by any build step — bump the version here AND in base.html (URL + SRI hash) together.",
+  "dependencies": {
+    "htmx.org": "2.0.10",
+    "easymde": "2.21.0",
+    "leaflet": "1.9.4",
+    "@fortawesome/fontawesome-free": "5.15.4"
+  }
+}
