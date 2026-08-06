@@ -59,18 +59,19 @@
   });
 
   // Load the already-uploaded photo as a File so the editor can work with it
-  // exactly like a fresh upload. Requires the media host to serve the image
-  // with CORS headers permissive enough for fetch() + canvas/WebGL use —
-  // otherwise the canvas is tainted and export will fail.
+  // exactly like a fresh upload. photoUrl points at photo_proxy_view (same
+  // origin as this page) rather than the photo's real home on the user's own
+  // micropub media endpoint — that host has no obligation to send CORS
+  // headers permissive enough for a cross-origin fetch() + canvas/WebGL use,
+  // and proxying server-side (not subject to CORS at all) sidesteps that.
   fetch(config.photoUrl)
     .then(function(resp) {
       if (!resp.ok) throw new Error('Could not load photo (' + resp.status + ')');
       return resp.blob();
     })
     .then(function(blob) {
-      var stem = config.photoUrl.split('/').pop().replace(/\.[^.]+$/, '') || 'photo';
       var ext = (blob.type && blob.type.split('/')[1]) || 'jpg';
-      photoEditor.openEditor(new File([blob], stem + '.' + ext, {type: blob.type || 'image/jpeg'}));
+      photoEditor.openEditor(new File([blob], 'photo.' + ext, {type: blob.type || 'image/jpeg'}));
     })
     .catch(function(err) {
       showError('Could not load this photo for editing: ' + err);

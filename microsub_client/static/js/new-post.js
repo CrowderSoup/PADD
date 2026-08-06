@@ -59,6 +59,27 @@
     autosaveTimer = setTimeout(performAutosave, 1500);
   }
 
+  // A thumbnail uploaded before the draft's first autosave has landed gets no
+  // edit-pencil link (buildPhotoEditLink needs a real draft id) — once
+  // #draft-id transitions from empty to populated, retroactively add the
+  // link to any thumbnail that's missing one.
+  function fillMissingPhotoEditLinks() {
+    var thumbs = document.querySelectorAll('#media-thumbnails .lcars-media-thumb');
+    thumbs.forEach(function(item) {
+      if (item.querySelector('.lcars-media-thumb-edit')) return;
+      var hidden = item.querySelector('input[name="photo"]');
+      if (!hidden || !hidden.value) return;
+      var editLink = buildPhotoEditLink(hidden.value);
+      if (!editLink) return;
+      var copyBtn = item.querySelector('.lcars-media-thumb-copy');
+      if (copyBtn) {
+        copyBtn.insertAdjacentElement('afterend', editLink);
+      } else {
+        item.appendChild(editLink);
+      }
+    });
+  }
+
   function applyDraftSaveResponse(html) {
     var oobMarker = '<input type="hidden" name="draft_id" id="draft-id"';
     var oobIdx = html.indexOf(oobMarker);
@@ -70,7 +91,9 @@
       tmp.innerHTML = html.slice(oobIdx);
       var newIdInput = tmp.querySelector('#draft-id');
       var currentIdInput = document.getElementById('draft-id');
+      var hadNoDraftId = currentIdInput && !currentIdInput.value;
       if (newIdInput && currentIdInput) currentIdInput.value = newIdInput.value;
+      if (hadNoDraftId && currentIdInput.value) fillMissingPhotoEditLinks();
     }
   }
 

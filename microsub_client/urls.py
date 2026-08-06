@@ -35,6 +35,7 @@ urlpatterns = [
     path("drafts/save/", views.draft_save_view, name="draft-save"),
     path("drafts/<int:draft_id>/delete/", views.draft_delete_view, name="draft-delete"),
     path("drafts/<int:draft_id>/photo/<str:photo_hash>/edit/", views.photo_edit_view, name="photo-edit"),
+    path("drafts/<int:draft_id>/photo/<str:photo_hash>/raw/", views.photo_proxy_view, name="photo-proxy"),
     path("opml/export/", views.opml_export_view, name="opml-export"),
     path("opml/import/", views.opml_import_view, name="opml-import"),
     path("account/export/", views.account_export_view, name="account-export"),

@@ -21,7 +21,7 @@
 <script src="{% static 'js/photo-editor-core.js' %}"></script>
 <script>
   window.PADD_PHOTO_EDIT = {
-    photoUrl: "{{ photo_url|escapejs }}",
+    photoUrl: "{% url 'photo-proxy' draft_id=draft_id photo_hash=photo_hash %}",
     draftId: {{ draft_id }},
     uploadUrl: "{% url 'micropub-media' %}",
     saveUrl: "{% url 'photo-edit' draft_id=draft_id photo_hash=photo_hash %}",
