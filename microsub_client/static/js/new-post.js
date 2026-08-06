@@ -12,7 +12,7 @@
   try {
     easymde = createLcarsEditor(ta, {
       placeholder: 'Write your post in Markdown...',
-      minHeight: '250px',
+      minHeight: '420px',
     });
 
     // Restore draft content into EasyMDE if data-draft-content is set
@@ -40,35 +40,168 @@
     });
   }
 
-  // Inject the current editor value directly into the HTMX request parameters.
-  // htmx:configRequest fires after HTMX has already serialized the form, so
-  // syncing the textarea value at this point doesn't affect the collected params.
-  // We must write into e.detail.parameters directly.
-  document.addEventListener('htmx:configRequest', function(e) {
-    if (e.detail && e.detail.elt && e.detail.elt.id === 'save-draft-btn') {
-      e.detail.parameters['content'] = easymde ? easymde.value() : ta.value;
+  // --- Autosave ---
+
+  var csrfToken = JSON.parse(document.body.getAttribute('hx-headers') || '{}')['X-CSRFToken'] || '';
+  var draftSaveUrl = form ? form.dataset.draftSaveUrl : '';
+  var autosaveReady = false;
+  var autosaveTimer = null;
+
+  function setDraftStatus(text) {
+    var el = document.getElementById('draft-save-status');
+    if (el) el.textContent = text;
+  }
+
+  function scheduleAutosave() {
+    if (!autosaveReady || !form || !draftSaveUrl) return;
+    setDraftStatus('Saving\u2026');
+    if (autosaveTimer) clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(performAutosave, 1500);
+  }
+
+  function applyDraftSaveResponse(html) {
+    var oobMarker = '<input type="hidden" name="draft_id" id="draft-id"';
+    var oobIdx = html.indexOf(oobMarker);
+    var sidebarHtml = oobIdx === -1 ? html : html.slice(0, oobIdx);
+    var sidebar = document.getElementById('compose-sidebar-nav');
+    if (sidebar) sidebar.innerHTML = sidebarHtml;
+    if (oobIdx !== -1) {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = html.slice(oobIdx);
+      var newIdInput = tmp.querySelector('#draft-id');
+      var currentIdInput = document.getElementById('draft-id');
+      if (newIdInput && currentIdInput) currentIdInput.value = newIdInput.value;
     }
-  });
+  }
+
+  function performAutosave() {
+    autosaveTimer = null;
+    syncEditorToTextarea();
+    var formData = new FormData(form);
+    fetch(draftSaveUrl, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken },
+      body: formData,
+    })
+    .then(function(resp) {
+      if (!resp.ok) throw new Error('draft save failed');
+      return resp.text();
+    })
+    .then(function(html) {
+      applyDraftSaveResponse(html);
+      setDraftStatus('Saved');
+    })
+    .catch(function() {
+      setDraftStatus('Draft error');
+    });
+  }
+
+  // --- Post type badge ---
+
+  var postNameInput = document.getElementById('post-name');
+  var postTypeBadge = document.getElementById('post-type-badge');
+
+  function updatePostTypeBadge() {
+    if (!postTypeBadge) return;
+    var hasTitle = !!(postNameInput && postNameInput.value.trim());
+    postTypeBadge.textContent = hasTitle ? 'Article' : 'Note';
+    postTypeBadge.classList.toggle('post-type-badge--article', hasTitle);
+  }
+
+  if (postNameInput) {
+    updatePostTypeBadge();
+    postNameInput.addEventListener('input', function() {
+      updatePostTypeBadge();
+      scheduleAutosave();
+    });
+  }
+
+  // --- Compose toolbar ---
+
+  var composeToolbar = document.getElementById('compose-toolbar');
+  var composePanelScrim = document.getElementById('compose-panel-scrim');
+
+  function focusEditor() {
+    if (easymde) easymde.codemirror.focus();
+    else if (ta) ta.focus();
+  }
+
+  if (composeToolbar) {
+    var toolbarBtns = Array.prototype.slice.call(composeToolbar.querySelectorAll('.compose-toolbar-btn'));
+
+    var closeAllPanels = function(returnFocus) {
+      toolbarBtns.forEach(function(btn) {
+        var panel = document.getElementById('compose-panel-' + btn.dataset.composePanel);
+        if (panel) panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+      });
+      if (composePanelScrim) composePanelScrim.hidden = true;
+      if (returnFocus) focusEditor();
+    };
+
+    toolbarBtns.forEach(function(btn) {
+      var panel = document.getElementById('compose-panel-' + btn.dataset.composePanel);
+      if (!panel) return;
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var isOpen = !panel.hidden;
+        closeAllPanels(isOpen);
+        if (!isOpen) {
+          panel.hidden = false;
+          btn.setAttribute('aria-expanded', 'true');
+          if (composePanelScrim) composePanelScrim.hidden = false;
+          var focusEl = panel.querySelector('input:not([type="hidden"]), textarea');
+          if (focusEl) focusEl.focus();
+        }
+      });
+    });
+
+    var locationSheetDone = document.getElementById('location-sheet-done');
+    if (locationSheetDone) {
+      locationSheetDone.addEventListener('click', function() { closeAllPanels(true); });
+    }
+
+    if (composePanelScrim) {
+      composePanelScrim.addEventListener('click', function() { closeAllPanels(true); });
+    }
+
+    document.addEventListener('click', function(e) {
+      if (composeToolbar.contains(e.target)) return;
+      var openPanel = document.querySelector('.compose-panel:not([hidden])');
+      if (openPanel && !openPanel.contains(e.target)) closeAllPanels(false);
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && document.querySelector('.compose-panel:not([hidden])')) {
+        closeAllPanels(true);
+      }
+    });
+  }
 
   // --- Character counter ---
 
   var charCounter = document.getElementById('char-counter');
 
-  var SILO_LIMITS = [
-    { patterns: ['twitter.com', 'twitter', 't.co'], limit: 280 },
-    { patterns: ['bsky.app', 'bluesky', 'bsky'], limit: 300 },
-    { patterns: ['mastodon'], limit: 500 },
+  var SILOS = [
+    { patterns: ['twitter.com', 'twitter', 't.co'], limit: 280, color: '#1d9bf0' },
+    { patterns: ['bsky.app', 'bluesky', 'bsky'], limit: 300, color: '#0085ff' },
+    { patterns: ['mastodon'], limit: 500, color: '#6364ff' },
   ];
 
-  function getSiloLimit(uid, name) {
+  function matchSilo(uid, name) {
     var text = (uid + ' ' + name).toLowerCase();
-    for (var i = 0; i < SILO_LIMITS.length; i++) {
-      var entry = SILO_LIMITS[i];
+    for (var i = 0; i < SILOS.length; i++) {
+      var entry = SILOS[i];
       for (var j = 0; j < entry.patterns.length; j++) {
-        if (text.indexOf(entry.patterns[j]) !== -1) return entry.limit;
+        if (text.indexOf(entry.patterns[j]) !== -1) return entry;
       }
     }
     return null;
+  }
+
+  function getSiloLimit(uid, name) {
+    var silo = matchSilo(uid, name);
+    return silo ? silo.limit : null;
   }
 
   function getActiveLimit() {
@@ -105,11 +238,18 @@
 
   if (easymde) {
     easymde.codemirror.on('change', updateCharCounter);
+    easymde.codemirror.on('change', scheduleAutosave);
     updateCharCounter();
   }
 
   document.querySelectorAll('input[name="syndicate_to"]').forEach(function(cb) {
     cb.addEventListener('change', updateCharCounter);
+
+    var pillLabel = document.querySelector('label[for="' + cb.id + '"]');
+    if (pillLabel) {
+      var silo = matchSilo(cb.value, pillLabel.textContent);
+      if (silo) pillLabel.style.setProperty('--syndicate-accent', silo.color);
+    }
   });
 
   // --- Media upload ---
@@ -118,7 +258,6 @@
   if (fileInput) {
     var uploadUrl = fileInput.dataset.uploadUrl;
     var convertUrl = fileInput.dataset.convertUrl;
-    var csrfToken = JSON.parse(document.body.getAttribute('hx-headers') || '{}')['X-CSRFToken'] || '';
 
     // --- Photo editor state ---
 
@@ -1078,7 +1217,7 @@
     removeBtn.type = 'button';
     removeBtn.className = 'lcars-media-thumb-remove';
     removeBtn.innerHTML = '&times;';
-    removeBtn.onclick = function() { item.remove(); };
+    removeBtn.onclick = function() { item.remove(); scheduleAutosave(); };
 
     var copyBtn = document.createElement('button');
     copyBtn.type = 'button';
@@ -1133,6 +1272,7 @@
     removeBtn.onclick = function() {
       if (objUrl) URL.revokeObjectURL(objUrl);
       item.remove();
+      scheduleAutosave();
     };
 
     var copyBtn = document.createElement('button');
@@ -1167,6 +1307,7 @@
     item.appendChild(copyBtn);
     item.appendChild(hidden);
     container.appendChild(item);
+    scheduleAutosave();
   }
 
   // --- Tag widget ---
@@ -1185,6 +1326,7 @@
 
     function syncTagHidden() {
       tagHiddenInput.value = activeTags.join(',');
+      scheduleAutosave();
     }
 
     function addTag(value) {
@@ -1302,6 +1444,7 @@
           mapEl.style.display = 'block';
           if (locationMap) locationMap.remove();
           locationMap = createLcarsMap(mapEl, parseFloat(lat), parseFloat(lng));
+          scheduleAutosave();
         }, function() {
           document.getElementById('location-coords').textContent = 'Unable to get location';
           locationToggle.checked = false;
@@ -1315,7 +1458,12 @@
           locationMap = null;
           document.getElementById('location-map').style.display = 'none';
         }
+        scheduleAutosave();
       }
     });
   }
+
+  // Restoration above (draft content/tags/photos) runs synchronously before
+  // this point, so autosave can't fire on page load — only on real edits.
+  autosaveReady = true;
 })();
