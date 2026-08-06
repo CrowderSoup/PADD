@@ -16,3 +16,6 @@ staticfiles/
 # Environment
 .env
 .kamal/secrets
+
+# Node (dependency tracking only — see package.json)
+node_modules/
