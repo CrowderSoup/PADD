@@ -11,8 +11,12 @@
  *   onUploaded(url, blob, filename) — called after a successful upload
  *   onUploadStart()  — optional, called right before the upload POST fires
  *   onUploadEnd()    — optional, called after the upload settles (success or error)
- *   onClose()        — optional, called at the end of closeEditor() (Cancel, Escape,
- *                       clicking the backdrop) — e.g. to navigate away on a dedicated page
+ *   onClose()        — optional, called when the user dismisses the editor without
+ *                       uploading (Cancel, Escape, clicking the backdrop, a failed
+ *                       image decode) — e.g. to navigate away on a dedicated page.
+ *                       NOT called when closeEditor() runs as a housekeeping step
+ *                       mid-upload (see the Upload button handler) — that flow's
+ *                       own onUploaded/onUploadEnd hooks own what happens next.
  *
  * Returns { openEditor(file), closeEditor() }.
  *
@@ -777,7 +781,7 @@ function createPhotoEditor(config) {
         updateHistoryButtons();
       });
     };
-    img.onerror = function() { closeEditor(); };
+    img.onerror = function() { closeEditorAndNotify(); };
     img.src = editorState._objectUrl;
     overlay.classList.remove('lcars-hidden');
   }
@@ -814,6 +818,14 @@ function createPhotoEditor(config) {
     editorState.adjustMode = false;
     editorState.adjustments = { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0,
                                  highlights: 0, shadows: 0, vignette: 0, sharpness: 0 };
+  }
+
+  // Only call from a genuine dismiss-without-uploading gesture (Cancel,
+  // Escape, backdrop click, failed decode) — never from the Upload button's
+  // flow, which calls closeEditor() on its own as a housekeeping step while
+  // the upload/save is still in flight (see onUploaded/onUploadEnd instead).
+  function closeEditorAndNotify() {
+    closeEditor();
     onClose();
   }
 
@@ -822,11 +834,11 @@ function createPhotoEditor(config) {
   // Attach all editor event listeners once at init
   if (overlay) {
     overlay.addEventListener('click', function(e) {
-      if (e.target === overlay) closeEditor();
+      if (e.target === overlay) closeEditorAndNotify();
     });
 
     var cancelBtn = document.getElementById('photo-editor-cancel');
-    if (cancelBtn) cancelBtn.addEventListener('click', closeEditor);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeEditorAndNotify);
 
     var undoBtn = document.getElementById('photo-editor-undo');
     if (undoBtn) undoBtn.addEventListener('click', undo);
@@ -1106,7 +1118,7 @@ function createPhotoEditor(config) {
   document.addEventListener('keydown', function(e) {
     if (!overlay || overlay.classList.contains('lcars-hidden')) return;
     if (e.key === 'Escape') {
-      closeEditor();
+      closeEditorAndNotify();
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       if (e.shiftKey) redo(); else undo();
