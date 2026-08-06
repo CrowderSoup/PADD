@@ -1464,6 +1464,18 @@ class NewPostViewTests(TestCase):
         self.assertContains(response, "<form")
 
     @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_does_not_leak_template_comments(self, _mock):
+        # Regression guard: a {# #} comment that spans multiple lines is not
+        # valid Django comment syntax (only {% comment %}...{% endcomment %}
+        # supports multi-line) and renders as literal text instead of being
+        # stripped — caught in prod on the photo-editor partial.
+        self._auth_session()
+        response = self.client.get("/new/")
+        self.assertNotContains(response, "Shared photo-editor markup")
+        self.assertNotContains(response, "{#")
+        self.assertNotContains(response, "{% comment %}")
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
     def test_get_exposes_media_endpoint_flag(self, _mock):
         self._auth_session()
         response = self.client.get("/new/")

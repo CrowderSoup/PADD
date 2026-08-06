@@ -1,8 +1,10 @@
-{# Shared photo-editor markup — included both as a modal (partials/compose_form.html)
-   and as the dedicated full-screen edit page (photo_edit.html). All ids are shared
-   across both contexts; photo-editor-core.js targets them directly, no config needed.
-   Pass photo_editor_open=True to render visible-by-default (full-page usage) instead
-   of the modal's default hidden-until-opened state. #}
+{% comment %}
+Shared photo-editor markup — included both as a modal (partials/compose_form.html)
+and as the dedicated full-screen edit page (photo_edit.html). All ids are shared
+across both contexts; photo-editor-core.js targets them directly, no config needed.
+Pass photo_editor_open=True to render visible-by-default (full-page usage) instead
+of the modal's default hidden-until-opened state.
+{% endcomment %}
 
 {# SVG filters for canvas ctx.filter — must live in the document DOM #}
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
