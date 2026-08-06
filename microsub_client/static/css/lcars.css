@@ -3919,6 +3919,23 @@ body.lcars-modal-open {
   animation: lcars-entry-in var(--lcars-motion-medium) both;
 }
 
+/* Dedicated full-screen edit route (photo_edit.html) — same markup as the
+   modal, but given the whole page rather than a floating centered panel. */
+.photo-editor-overlay--page {
+  position: static;
+  inset: auto;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+  min-height: calc(100vh - 220px);
+}
+
+.photo-editor-overlay--page .photo-editor-modal {
+  width: 100%;
+  max-height: none;
+  animation: none;
+}
+
 .photo-editor-accent {
   width: 10px;
   flex-shrink: 0;
@@ -3973,6 +3990,33 @@ body.lcars-modal-open {
   display: block;
   max-width: 100%;
   max-height: 100%;
+}
+
+.photo-editor-compare-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--lcars-border);
+  border-radius: var(--lcars-radius-sm);
+  color: var(--lcars-text-muted);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  z-index: 2;
+  transition: border-color var(--lcars-transition), color var(--lcars-transition),
+    background var(--lcars-transition);
+}
+
+.photo-editor-compare-btn:hover,
+.photo-editor-compare-btn[aria-pressed="true"] {
+  border-color: var(--lcars-orange);
+  color: var(--lcars-orange);
+  background: rgba(248, 154, 37, 0.15);
 }
 
 .photo-editor-crop-hint {
@@ -4163,6 +4207,13 @@ body.lcars-modal-open {
   justify-content: space-between;
 }
 
+.photo-editor-header-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .photo-editor-adjust-btn {
   background: none;
   border: 1px solid var(--lcars-border);
@@ -4184,6 +4235,12 @@ body.lcars-modal-open {
   border-color: var(--lcars-orange);
   color: var(--lcars-orange);
   background: rgba(248, 154, 37, 0.08);
+}
+
+.photo-editor-adjust-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
 }
 
 .photo-editor-adjust-btn--active {
@@ -4298,6 +4355,31 @@ body.lcars-modal-open {
 
 .lcars-media-thumb-copy--done {
   background: var(--lcars-teal);
+  color: #fff;
+}
+
+.lcars-media-thumb-edit {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--lcars-text);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background var(--lcars-transition), color var(--lcars-transition);
+}
+
+.lcars-media-thumb-edit:hover {
+  background: var(--lcars-orange);
   color: #fff;
 }
 

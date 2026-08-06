@@ -14,12 +14,14 @@ from django.core.cache import cache
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.templatetags.static import static
+from django.urls import reverse
 
 from pathlib import Path
 
 from django.conf import settings
 
 from . import api, image_utils, micropub
+from .photo_id import photo_url_hash
 from .auth import (
     MICROPUB_SCOPES,
     REQUESTED_SCOPE,
@@ -1558,6 +1560,75 @@ def draft_delete_view(request, draft_id):
     oob_html = f'<input type="hidden" name="draft_id" id="draft-id" value="{oob_value}" hx-swap-oob="true">'
     response.content = response.content + oob_html.encode()
     return response
+
+
+def photo_edit_view(request, draft_id, photo_hash):
+    """Dedicated full-screen editor for a photo already attached to a Draft.
+
+    There is no Upload/Photo model — Draft.photos is a plain list of URLs —
+    so the photo is identified by a deterministic hash of its URL rather than
+    a database id (see photo_id.photo_url_hash). GET resolves and renders the
+    editor; POST accepts the freshly re-uploaded replacement URL and swaps it
+    into the draft's photo list in place.
+
+    Scope note: this only covers photos on an in-progress Draft. Editing a
+    photo on an already-published post (the Micropub-update edit flow) uses a
+    different data path — the post's live source properties, not Draft.photos
+    — and isn't handled here.
+    """
+    mp_endpoint = request.session.get("micropub_endpoint")
+    if not mp_endpoint:
+        return HttpResponse("Micropub not available", status=400)
+
+    token = request.session.get("access_token")
+    if not token:
+        return HttpResponse("Not authenticated", status=400)
+
+    user_url = request.session.get("user_url", "")
+    if not user_url:
+        return HttpResponse(status=403)
+
+    try:
+        draft = Draft.objects.get(pk=draft_id, user_url=user_url)
+    except Draft.DoesNotExist:
+        return HttpResponse("Draft not found", status=404)
+
+    photo_url = None
+    for url in draft.photos:
+        if photo_url_hash(url) == photo_hash:
+            photo_url = url
+            break
+    if photo_url is None:
+        return HttpResponse("Photo not found", status=404)
+
+    if request.method == "POST":
+        new_url = request.POST.get("new_url", "").strip()
+        if not new_url:
+            return HttpResponse("Missing new_url", status=400)
+        draft.photos = [new_url if u == photo_url else u for u in draft.photos]
+        draft.save(update_fields=["photos", "updated_at"])
+        return redirect(f"{reverse('new-post')}?draft={draft.pk}")
+
+    has_media_endpoint = False
+    try:
+        config = micropub.query_config(mp_endpoint, token)
+        media_endpoint_url = config.get("media-endpoint", "")
+        has_media_endpoint = bool(media_endpoint_url)
+        # Cache the endpoint URL so upload_media_view can skip this query.
+        if media_endpoint_url:
+            request.session["media_endpoint_url"] = media_endpoint_url
+    except micropub.MicropubError:
+        pass
+
+    if not has_media_endpoint:
+        return HttpResponse("No media endpoint available", status=400)
+
+    return render(request, "photo_edit.html", {
+        "draft_id": draft.pk,
+        "photo_hash": photo_hash,
+        "photo_url": photo_url,
+        "hide_fab": True,
+    })
 
 
 def convert_image_view(request):

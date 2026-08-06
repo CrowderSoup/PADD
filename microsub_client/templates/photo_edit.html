@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Edit Photo — PADD{% endblock %}
+
+{% block content %}
+<div class="lcars-new-post lcars-new-post--photo-edit">
+  <div class="lcars-timeline-header">
+    <h2 class="lcars-channel-title">Edit Photo</h2>
+    <a href="{% url 'new-post' %}?draft={{ draft_id }}" class="lcars-button lcars-button-blue">
+      <i class="fas fa-arrow-left"></i> Back to Draft
+    </a>
+  </div>
+
+  {% include "partials/photo_editor.html" with photo_editor_open=True %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/photo-gl.js' %}"></script>
+<script src="{% static 'js/photo-editor-core.js' %}"></script>
+<script>
+  window.PADD_PHOTO_EDIT = {
+    photoUrl: "{{ photo_url|escapejs }}",
+    draftId: {{ draft_id }},
+    uploadUrl: "{% url 'micropub-media' %}",
+    saveUrl: "{% url 'photo-edit' draft_id=draft_id photo_hash=photo_hash %}",
+    backUrl: "{% url 'new-post' %}?draft={{ draft_id }}"
+  };
+</script>
+<script src="{% static 'js/photo-edit-page.js' %}"></script>
+{% endblock %}
