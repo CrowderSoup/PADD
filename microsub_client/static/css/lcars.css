@@ -2918,7 +2918,7 @@ body.lcars-modal-open {
 }
 
 @media (min-width: 769px) {
-  .compose-panel-scrim {
+  .compose-panel-scrim:not(.compose-panel-scrim--location) {
     display: none !important;
   }
 }
@@ -2959,6 +2959,7 @@ body.lcars-modal-open {
   overflow-y: auto;
   border-radius: var(--lcars-radius) var(--lcars-radius) 0 0;
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  background: var(--lcars-bg-alt);
   box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.4);
   animation: composeSheetIn var(--lcars-motion-medium) both;
 }

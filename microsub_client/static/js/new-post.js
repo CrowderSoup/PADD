@@ -135,7 +135,10 @@
         if (panel) panel.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
       });
-      if (composePanelScrim) composePanelScrim.hidden = true;
+      if (composePanelScrim) {
+        composePanelScrim.hidden = true;
+        composePanelScrim.classList.remove('compose-panel-scrim--location');
+      }
       if (returnFocus) focusEditor();
     };
 
@@ -149,7 +152,10 @@
         if (!isOpen) {
           panel.hidden = false;
           btn.setAttribute('aria-expanded', 'true');
-          if (composePanelScrim) composePanelScrim.hidden = false;
+          if (composePanelScrim) {
+            composePanelScrim.hidden = false;
+            composePanelScrim.classList.toggle('compose-panel-scrim--location', panel.id === 'compose-panel-location');
+          }
           var focusEl = panel.querySelector('input:not([type="hidden"]), textarea');
           if (focusEl) focusEl.focus();
         }
