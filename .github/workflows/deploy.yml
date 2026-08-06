@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 env:
   SSH_PRIVATE_KEY: ${{ secrets.CROWDER_CLOUD_SSH_KEY }}
