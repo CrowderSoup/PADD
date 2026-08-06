@@ -1853,6 +1853,12 @@ body.lcars-modal-open {
   line-height: 1.5;
 }
 
+.lcars-compose-note {
+  color: var(--lcars-text-muted);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
 @media (max-width: 780px) {
   .lcars-landing-container {
     padding: 18px 14px 28px;

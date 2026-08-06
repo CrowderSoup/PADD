@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/unmute/", views.unmute_user_view, name="unmute-user"),
     path("api/block/", views.block_user_view, name="block-user"),
     path("new/", views.new_post_view, name="new-post"),
+    path("edit/", views.edit_post_view, name="edit-post"),
     path("drafts/save/", views.draft_save_view, name="draft-save"),
     path("drafts/<int:draft_id>/delete/", views.draft_delete_view, name="draft-delete"),
     path("opml/export/", views.opml_export_view, name="opml-export"),

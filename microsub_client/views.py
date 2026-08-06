@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import secrets
+import types
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse as _urlparse
 
@@ -20,6 +21,7 @@ from django.conf import settings
 
 from . import api, image_utils, micropub
 from .auth import (
+    MICROPUB_SCOPES,
     REQUESTED_SCOPE,
     build_authorization_url,
     discover_endpoints,
@@ -32,7 +34,7 @@ from django.db.models import Count, Max, Q
 
 from .context_processors import _broadcasts_cache_key
 from .models import Broadcast, CachedEntry, DismissedBroadcast, Draft, Interaction, KnownUser, UserSettings
-from .outbound import normalize_url, parse_json_response, safe_request
+from .outbound import UnsafeOutboundURLError, normalize_url, parse_json_response, safe_request
 from .utils import get_entry_type, sanitize_content, format_datetime
 
 from django_ratelimit.decorators import ratelimit
@@ -272,6 +274,9 @@ def settings_view(request):
         channels = []
         notifications_channel = None
 
+    granted_scope = request.session.get("granted_scope") or ""
+    missing_scopes = [s for s in MICROPUB_SCOPES if s not in granted_scope.split()]
+
     return render(request, "settings.html", {
         "default_filter": user_settings.default_filter,
         "mark_read_behavior": user_settings.mark_read_behavior,
@@ -280,6 +285,7 @@ def settings_view(request):
         "show_gardn_harvest": user_settings.show_gardn_harvest,
         "channels": channels,
         "notifications_channel": notifications_channel,
+        "needs_reconnect_for_editing": "update" in missing_scopes,
     })
 
 
@@ -534,10 +540,27 @@ def _enrich_entries(entries, request):
     has_micropub = bool(request.session.get("micropub_endpoint"))
     user_url = request.session.get("user_url", "")
 
+    normalized_user_url = None
+    if user_url:
+        try:
+            normalized_user_url = normalize_url(user_url)
+        except UnsafeOutboundURLError:
+            normalized_user_url = None
+
     for entry in entries:
         # Templates may reference entry.url in filter arguments; ensure key exists.
         entry.setdefault("url", "")
         entry["display_type"] = get_entry_type(entry)
+
+        author = entry.get("author")
+        author_url = author.get("url") if isinstance(author, dict) else None
+        is_own_post = False
+        if normalized_user_url and author_url:
+            try:
+                is_own_post = normalize_url(author_url) == normalized_user_url
+            except UnsafeOutboundURLError:
+                is_own_post = False
+        entry["is_own_post"] = is_own_post
         for key in ("like-of", "repost-of", "in-reply-to", "bookmark-of"):
             if key in entry:
                 val = entry[key]
@@ -1321,6 +1344,119 @@ def new_post_view(request):
         "has_media_endpoint": has_media_endpoint,
         "syndicate_to": syndicate_to,
         "drafts": drafts,
+        "draft": draft,
+        "hide_fab": True,
+    })
+
+
+def _mf2_first(properties, key, default=""):
+    values = properties.get(key) or []
+    return values[0] if values else default
+
+
+def _photo_url(item):
+    if isinstance(item, dict):
+        return item.get("value", "")
+    return item
+
+
+def edit_post_view(request):
+    mp_endpoint = request.session.get("micropub_endpoint")
+    if not mp_endpoint:
+        return HttpResponse("Micropub not available", status=400)
+
+    token = request.session.get("access_token")
+    if not token:
+        return HttpResponse("Not authenticated", status=400)
+
+    post_url = request.GET.get("url", "").strip()
+    if not post_url:
+        return HttpResponse("Missing url", status=400)
+
+    has_media_endpoint = False
+    try:
+        config = micropub.query_config(mp_endpoint, token)
+        media_endpoint_url = config.get("media-endpoint", "")
+        has_media_endpoint = bool(media_endpoint_url)
+        if media_endpoint_url:
+            request.session["media_endpoint_url"] = media_endpoint_url
+    except micropub.MicropubError:
+        pass
+
+    try:
+        source = micropub.fetch_source(mp_endpoint, token, post_url)
+    except micropub.MicropubError as exc:
+        return render(request, "edit_post.html", {
+            "error": f"Failed to load post: {exc}",
+            "post_url": post_url,
+            "hide_fab": True,
+        })
+
+    original_name = _mf2_first(source, "name")
+    original_content = _mf2_first(source, "content")
+    original_categories = list(source.get("category") or [])
+    original_photo_urls = [_photo_url(p) for p in (source.get("photo") or [])]
+
+    if request.method == "POST":
+        content = request.POST.get("content", "").strip()
+        name = request.POST.get("name", "").strip()
+        tags = request.POST.get("tags", "").strip()
+        categories = [t.strip() for t in tags.split(",") if t.strip()]
+        submitted_photos = [p for p in request.POST.getlist("photo") if p]
+
+        if not content:
+            return render(request, "edit_post.html", {
+                "error": "Content is required.",
+                "post_url": post_url,
+                "has_media_endpoint": has_media_endpoint,
+                "draft": types.SimpleNamespace(
+                    title=name, tags=tags, content=content, photos=submitted_photos,
+                ),
+                "hide_fab": True,
+            })
+
+        replace = {"content": [content]}
+        if name != original_name:
+            replace["name"] = [name]
+        if categories != original_categories:
+            replace["category"] = categories
+
+        added_photos = [p for p in submitted_photos if p not in original_photo_urls]
+        removed_photos = [p for p in original_photo_urls if p not in submitted_photos]
+
+        try:
+            micropub.update_post(
+                mp_endpoint, token, post_url,
+                replace=replace,
+                add={"photo": added_photos} if added_photos else None,
+                delete={"photo": removed_photos} if removed_photos else None,
+            )
+        except micropub.MicropubError as exc:
+            return render(request, "edit_post.html", {
+                "error": f"Failed to save: {exc}",
+                "post_url": post_url,
+                "has_media_endpoint": has_media_endpoint,
+                "draft": types.SimpleNamespace(
+                    title=name, tags=tags, content=content, photos=submitted_photos,
+                ),
+                "hide_fab": True,
+            })
+
+        return render(request, "edit_post.html", {
+            "success": True,
+            "post_url": post_url,
+            "hide_fab": True,
+        })
+
+    draft = types.SimpleNamespace(
+        title=original_name,
+        tags=",".join(original_categories),
+        content=original_content,
+        photos=original_photo_urls,
+    )
+    return render(request, "edit_post.html", {
+        "post_url": post_url,
+        "has_media_endpoint": has_media_endpoint,
         "draft": draft,
         "hide_fab": True,
     })

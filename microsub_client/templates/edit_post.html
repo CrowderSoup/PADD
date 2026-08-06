@@ -1,46 +1,36 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}New Post — PADD{% endblock %}
+{% block title %}Edit Post — PADD{% endblock %}
 
 {% block sidebar %}
 <aside class="lcars-sidebar" id="channel-sidebar">
   <div class="lcars-sidebar-header">
-    <span class="lcars-sidebar-label">Compose</span>
+    <span class="lcars-sidebar-label">Edit Post</span>
   </div>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
-  <nav class="lcars-channel-list" id="compose-sidebar-nav">
-    {% include "partials/draft_sidebar.html" with drafts=drafts current_draft_id=draft.pk %}
-  </nav>
   <div class="lcars-channel-add">
     <a href="{% url 'index' %}" class="lcars-channel-add-toggle lcars-channel-add-toggle--borderless">
       <i class="fas fa-arrow-left"></i> Back to Timeline
     </a>
   </div>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
-  <div class="lcars-sidebar-new-post">
-    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
-      <i class="fas fa-pen"></i> New Post
-    </a>
-  </div>
 </aside>
 {% endblock %}
 
 {% block content %}
 <div class="lcars-new-post">
   <div class="lcars-timeline-header">
-    <h2 class="lcars-channel-title">New Post</h2>
+    <h2 class="lcars-channel-title">Edit Post</h2>
   </div>
 
   {% if success %}
   <div class="lcars-publish-toast">
     <div class="lcars-publish-toast-icon"><i class="fas fa-check-circle"></i></div>
-    <p>Post published successfully!</p>
+    <p>Post updated successfully!</p>
     <div class="lcars-publish-toast-actions">
-      {% if result_url %}
-        <a href="{{ result_url }}" class="lcars-button lcars-button-blue" target="_blank" rel="noopener">View Post</a>
-      {% endif %}
-      <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange">Write Another</a>
+      <a href="{{ post_url }}" class="lcars-button lcars-button-blue" target="_blank" rel="noopener">View Post</a>
+      <a href="{% url 'index' %}" class="lcars-button lcars-button-orange">Back to Timeline</a>
     </div>
   </div>
   {% else %}
@@ -49,7 +39,9 @@
   <div class="lcars-error">{{ error }}</div>
   {% endif %}
 
-  {% include "partials/compose_form.html" with show_location=True show_draft_controls=True submit_label="Publish" %}
+  <p class="lcars-compose-note">Location isn&rsquo;t editable from PADD yet.</p>
+
+  {% include "partials/compose_form.html" with show_location=False show_draft_controls=False submit_label="Save Changes" %}
   {% endif %}
 </div>
 
