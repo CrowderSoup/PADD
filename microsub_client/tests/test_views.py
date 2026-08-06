@@ -1262,6 +1262,83 @@ class TimelineViewTests(TestCase):
         self.client.get("/channel/notifications/?unread=0")
         self.assertEqual(mock_tl.call_args.kwargs["is_read"], None)
 
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "entry-1",
+            "url": "https://me.example/post/1",
+            "content": {"text": "My own post"},
+            "author": {"url": "https://me.example/", "name": "Me"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_edit_link_shown_for_own_post(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/")
+        self.assertContains(response, "edit/?url=")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "entry-1",
+            "url": "https://me.example/post/1",
+            "content": {"text": "My own post"},
+            # Author URL differs only by trailing slash from session user_url.
+            "author": {"url": "https://me.example", "name": "Me"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_edit_link_shown_despite_trailing_slash_mismatch(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/")
+        self.assertContains(response, "edit/?url=")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "entry-1",
+            "url": "https://someone-else.example/post/1",
+            "content": {"text": "Someone else's post"},
+            "author": {"url": "https://someone-else.example/", "name": "Someone Else"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_edit_link_hidden_for_other_authors_post(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/")
+        self.assertNotContains(response, "edit/?url=")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "entry-1",
+            "url": "https://someone-else.example/post/1",
+            "content": {"text": "No author info"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_edit_link_hidden_when_entry_has_no_author(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/home/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "edit/?url=")
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):
@@ -1284,6 +1361,24 @@ class SettingsViewTests(TestCase):
         session.save()
         response = self.client.get("/settings/")
         self.assertEqual(response.status_code, 200)
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    def test_shows_reconnect_banner_when_update_scope_missing(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session["granted_scope"] = "read follow mute block channels create"
+        session.save()
+        response = self.client.get("/settings/")
+        self.assertContains(response, "Reconnect to enable post editing")
+
+    @patch("microsub_client.views.api.get_channels", return_value=[])
+    def test_hides_reconnect_banner_when_update_scope_granted(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session["granted_scope"] = "read follow mute block channels create update"
+        session.save()
+        response = self.client.get("/settings/")
+        self.assertNotContains(response, "Reconnect to enable post editing")
 
     @patch("microsub_client.views.api.get_channels", return_value=[])
     def test_post_saves_default_filter(self, _mock):
@@ -1522,6 +1617,197 @@ class NewPostViewTests(TestCase):
         session.update(s)
         session.save()
         response = self.client.post("/new/", {"content": "Hello"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+
+_SOURCE_PROPERTIES = {
+    "content": ["Old body"],
+    "name": ["Old Title"],
+    "category": ["python", "web"],
+    "photo": [
+        "https://media.example/a.jpg",
+        {"value": "https://media.example/b.jpg", "alt": "alt text"},
+    ],
+}
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class EditPostViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    # --- GET ---
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_get_renders_form_prefilled(self, _mock_source, _mock_config):
+        self._auth_session()
+        response = self.client.get("/edit/", {"url": "https://me.example/post/1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "edit_post.html")
+        draft = response.context["draft"]
+        self.assertEqual(draft.title, "Old Title")
+        self.assertEqual(draft.content, "Old body")
+        self.assertEqual(draft.tags, "python,web")
+        self.assertEqual(
+            draft.photos,
+            ["https://media.example/a.jpg", "https://media.example/b.jpg"],
+        )
+
+    def test_get_missing_url_returns_400(self):
+        self._auth_session()
+        response = self.client.get("/edit/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_get_no_micropub_endpoint_returns_400(self):
+        s = auth_session()
+        del s["micropub_endpoint"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.get("/edit/", {"url": "https://me.example/post/1"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_get_no_access_token_redirects_to_login(self):
+        s = auth_session()
+        del s["access_token"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.get("/edit/", {"url": "https://me.example/post/1"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", side_effect=micropub.MicropubError("boom"))
+    def test_get_fetch_source_failure_shows_error(self, _mock_source, _mock_config):
+        self._auth_session()
+        response = self.client.get("/edit/", {"url": "https://me.example/post/1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("boom", response.context["error"])
+
+    # --- POST ---
+
+    @patch("microsub_client.views.micropub.update_post")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_empty_content_returns_error(self, _mock_source, _mock_config, mock_update):
+        self._auth_session()
+        response = self.client.post(
+            "/edit/?url=https://me.example/post/1",
+            {"content": "   ", "name": "Old Title", "tags": "python,web"},
+        )
+        self.assertContains(response, "Content is required.")
+        mock_update.assert_not_called()
+
+    @patch("microsub_client.views.micropub.update_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_unchanged_name_and_category_omitted_from_replace(
+        self, _mock_source, _mock_config, mock_update
+    ):
+        self._auth_session()
+        self.client.post(
+            "/edit/?url=https://me.example/post/1",
+            {
+                "content": "New body",
+                "name": "Old Title",
+                "tags": "python,web",
+                "photo": ["https://media.example/a.jpg", "https://media.example/b.jpg"],
+            },
+        )
+        args, kwargs = mock_update.call_args.args, mock_update.call_args.kwargs
+        self.assertEqual(args[2], "https://me.example/post/1")
+        replace = kwargs["replace"]
+        self.assertEqual(replace["content"], ["New body"])
+        self.assertNotIn("name", replace)
+        self.assertNotIn("category", replace)
+        self.assertIsNone(kwargs["add"])
+        self.assertIsNone(kwargs["delete"])
+
+    @patch("microsub_client.views.micropub.update_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_changed_name_and_category_included_in_replace(
+        self, _mock_source, _mock_config, mock_update
+    ):
+        self._auth_session()
+        self.client.post(
+            "/edit/?url=https://me.example/post/1",
+            {
+                "content": "New body",
+                "name": "New Title",
+                "tags": "python,rust",
+                "photo": ["https://media.example/a.jpg", "https://media.example/b.jpg"],
+            },
+        )
+        kwargs = mock_update.call_args.kwargs
+        self.assertEqual(kwargs["replace"]["name"], ["New Title"])
+        self.assertEqual(kwargs["replace"]["category"], ["python", "rust"])
+
+    @patch("microsub_client.views.micropub.update_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_photo_diff_computes_add_and_delete(
+        self, _mock_source, _mock_config, mock_update
+    ):
+        self._auth_session()
+        self.client.post(
+            "/edit/?url=https://me.example/post/1",
+            {
+                "content": "New body",
+                "name": "Old Title",
+                "tags": "python,web",
+                # Removed a.jpg, kept b.jpg, added c.jpg
+                "photo": ["https://media.example/b.jpg", "https://media.example/c.jpg"],
+            },
+        )
+        kwargs = mock_update.call_args.kwargs
+        self.assertEqual(kwargs["add"], {"photo": ["https://media.example/c.jpg"]})
+        self.assertEqual(kwargs["delete"], {"photo": ["https://media.example/a.jpg"]})
+
+    @patch("microsub_client.views.micropub.update_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_success_renders_toast(self, _mock_source, _mock_config, _mock_update):
+        self._auth_session()
+        response = self.client.post(
+            "/edit/?url=https://me.example/post/1",
+            {
+                "content": "New body",
+                "name": "Old Title",
+                "tags": "python,web",
+                "photo": ["https://media.example/a.jpg", "https://media.example/b.jpg"],
+            },
+        )
+        self.assertContains(response, "updated successfully")
+
+    @patch(
+        "microsub_client.views.micropub.update_post",
+        side_effect=micropub.MicropubError("Invalid replace payload"),
+    )
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_micropub_error_shows_error(self, _mock_source, _mock_config, _mock_update):
+        self._auth_session()
+        response = self.client.post(
+            "/edit/?url=https://me.example/post/1",
+            {"content": "New body", "name": "Old Title", "tags": "python,web"},
+        )
+        self.assertIn("Invalid replace payload", response.context["error"])
+
+    def test_post_no_access_token_redirects_to_login(self):
+        s = auth_session()
+        del s["access_token"]
+        session = self.client.session
+        session.update(s)
+        session.save()
+        response = self.client.post(
+            "/edit/?url=https://me.example/post/1", {"content": "Hello"}
+        )
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response["Location"])
 

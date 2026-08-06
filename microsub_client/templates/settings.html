@@ -23,6 +23,24 @@
     <h2 class="lcars-channel-title">Settings</h2>
   </div>
 
+  {% if needs_reconnect_for_editing %}
+  <div class="lcars-broadcast">
+    <div class="lcars-broadcast-accent"></div>
+    <div class="lcars-broadcast-body">
+      <p class="lcars-broadcast-message">
+        Reconnect to enable post editing &mdash; PADD needs to re-authenticate with your site to
+        request permission to edit posts.
+        <a href="{% url 'logout' %}">Reconnect now</a>
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <p class="lcars-compose-note">
+    The Edit button only appears on your own posts in the timeline, and only if you follow your
+    own site as a channel &mdash; otherwise your posts never show up there for PADD to recognize.
+  </p>
+
   <form id="settings-form">
     {% csrf_token %}
     {% include "partials/settings_form.html" %}
