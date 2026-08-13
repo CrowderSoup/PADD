@@ -574,6 +574,8 @@ def _enrich_entries(entries, request):
                     entry[underscore_key + "_context"] = val
         if isinstance(entry.get("category"), list):
             entry["category"] = [c for c in entry["category"] if not c.startswith("http")]
+        if isinstance(entry.get("photo"), list):
+            entry["photo"] = [_photo_url(p) for p in entry["photo"]]
         irt = entry.get("in_reply_to", "")
         if isinstance(irt, str) and irt.startswith("at://"):
             entry["in_reply_to_web_url"] = _bluesky_at_to_web_url(irt)
