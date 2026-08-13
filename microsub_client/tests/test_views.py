@@ -1163,6 +1163,27 @@ class TimelineViewTests(TestCase):
 
     @patch("microsub_client.views.api.get_timeline", return_value={
         "items": [{
+            "_id": "47444001",
+            "name": "Sugar House",
+            "photo": [{"value": "https://example.com/photo.jpg", "alt": "Sugar House"}],
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_photo_with_alt_object_renders_plain_url_in_img_src(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'src="https://example.com/photo.jpg"')
+        self.assertNotContains(response, "&#x27;value&#x27;")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
             "_id": "entry-1",
             "content": {"html": "<p>Long post preview</p>", "text": "Long post preview"},
         }],
