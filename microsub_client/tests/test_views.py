@@ -24,6 +24,8 @@ from microsub_client.models import (
     KnownUser,
     UserSettings,
 )
+from microsub_client.outbound import UnsafeOutboundURLError
+from microsub_client.photo_id import photo_url_hash
 from microsub_client.views import CHANNELS_CACHE_TTL, _channels_cache_key
 
 from .conftest import SIMPLE_STORAGES, auth_session
@@ -1463,6 +1465,18 @@ class NewPostViewTests(TestCase):
         self.assertContains(response, "<form")
 
     @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_does_not_leak_template_comments(self, _mock):
+        # Regression guard: a {# #} comment that spans multiple lines is not
+        # valid Django comment syntax (only {% comment %}...{% endcomment %}
+        # supports multi-line) and renders as literal text instead of being
+        # stripped — caught in prod on the photo-editor partial.
+        self._auth_session()
+        response = self.client.get("/new/")
+        self.assertNotContains(response, "Shared photo-editor markup")
+        self.assertNotContains(response, "{#")
+        self.assertNotContains(response, "{% comment %}")
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
     def test_get_exposes_media_endpoint_flag(self, _mock):
         self._auth_session()
         response = self.client.get("/new/")
@@ -2092,6 +2106,142 @@ class DraftEndpointsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Draft.objects.filter(pk=draft.pk).exists())
         self.assertContains(response, 'id="draft-id"')
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class PhotoEditViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def _draft_with_photo(self, url="https://media.example/uploads/a.jpg"):
+        return Draft.objects.create(
+            user_url="https://me.example/", title="T", content="C", photos=[url],
+        )
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_renders_editor_for_matching_hash(self, _mock):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/edit/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "photo_edit.html")
+        self.assertEqual(response.context["photo_url"], draft.photos[0])
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_unknown_hash_returns_404(self, _mock):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        response = self.client.get(f"/drafts/{draft.pk}/photo/deadbeef/edit/")
+        self.assertEqual(response.status_code, 404)
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_WITH_MEDIA)
+    def test_get_other_users_draft_returns_404(self, _mock):
+        self._auth_session()
+        other_draft = Draft.objects.create(
+            user_url="https://someone-else.example/",
+            photos=["https://media.example/uploads/b.jpg"],
+        )
+        photo_hash = photo_url_hash(other_draft.photos[0])
+        response = self.client.get(f"/drafts/{other_draft.pk}/photo/{photo_hash}/edit/")
+        self.assertEqual(response.status_code, 404)
+
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_get_no_media_endpoint_returns_400(self, _mock):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/edit/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_post_swaps_photo_url_and_redirects(self):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        old_url = draft.photos[0]
+        photo_hash = photo_url_hash(old_url)
+        response = self.client.post(
+            f"/drafts/{draft.pk}/photo/{photo_hash}/edit/",
+            {"new_url": "https://media.example/uploads/edited.jpg"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"draft={draft.pk}", response["Location"])
+        draft.refresh_from_db()
+        self.assertEqual(draft.photos, ["https://media.example/uploads/edited.jpg"])
+        self.assertNotIn(old_url, draft.photos)
+
+    def test_post_missing_new_url_returns_400(self):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        response = self.client.post(f"/drafts/{draft.pk}/photo/{photo_hash}/edit/", {})
+        self.assertEqual(response.status_code, 400)
+
+
+@override_settings(STORAGES=SIMPLE_STORAGES)
+class PhotoProxyViewTests(TestCase):
+    def _auth_session(self):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+    def _draft_with_photo(self, url="https://media.example/uploads/a.jpg"):
+        return Draft.objects.create(
+            user_url="https://me.example/", title="T", content="C", photos=[url],
+        )
+
+    @patch("microsub_client.views.safe_request")
+    def test_streams_photo_bytes_with_upstream_content_type(self, mock_safe_request):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+
+        mock_resp = Mock()
+        mock_resp.headers = {"Content-Type": "image/jpeg"}
+        mock_resp.content = b"fake-jpeg-bytes"
+        mock_safe_request.return_value = mock_resp
+
+        response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/raw/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertEqual(response.content, b"fake-jpeg-bytes")
+        mock_resp.raise_for_status.assert_called_once()
+        mock_safe_request.assert_called_once()
+        self.assertEqual(mock_safe_request.call_args.args[0], draft.photos[0])
+
+    @patch("microsub_client.views.safe_request", side_effect=UnsafeOutboundURLError("blocked"))
+    def test_unsafe_upstream_url_returns_502(self, _mock):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/raw/")
+        self.assertEqual(response.status_code, 502)
+
+    def test_unknown_hash_returns_404(self):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        response = self.client.get(f"/drafts/{draft.pk}/photo/deadbeef/raw/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_cannot_proxy_another_users_draft_photo(self):
+        # This is the whole point of resolving the URL server-side from a
+        # session-owned Draft rather than trusting a client-supplied URL —
+        # confirm it actually can't be used as an open proxy for other drafts.
+        self._auth_session()
+        other_draft = Draft.objects.create(
+            user_url="https://someone-else.example/",
+            photos=["https://media.example/uploads/b.jpg"],
+        )
+        photo_hash = photo_url_hash(other_draft.photos[0])
+        response = self.client.get(f"/drafts/{other_draft.pk}/photo/{photo_hash}/raw/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_requires_authentication(self):
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/raw/")
+        self.assertIn(response.status_code, (302, 400, 403))
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
