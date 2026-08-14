@@ -1573,6 +1573,15 @@ body.lcars-modal-open {
 .lcars-toast-success { border-color: var(--lcars-green, #7be88e); }
 .lcars-toast-error   { border-color: var(--lcars-orange); }
 
+.lcars-toast-publish {
+  pointer-events: auto;
+}
+
+.lcars-toast-publish a {
+  color: var(--lcars-green, #7be88e);
+  text-decoration: underline;
+}
+
 @media (max-width: 720px) {
   .lcars-toast {
     top: auto;
@@ -3087,56 +3096,6 @@ body.lcars-modal-open {
   align-items: center;
   gap: 16px;
   padding-top: 8px;
-}
-
-@keyframes lcarsPublishToastIn {
-  from {
-    transform: translate(-50%, 40px);
-    opacity: 0;
-  }
-  to {
-    transform: translate(-50%, 0);
-    opacity: 1;
-  }
-}
-
-.lcars-publish-toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom));
-  transform: translate(-50%, 0);
-  z-index: 6000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 24px 32px;
-  max-width: min(420px, calc(100vw - 32px));
-  text-align: center;
-  border-radius: var(--lcars-radius);
-  border: 1px solid var(--lcars-green, #7be88e);
-  background: rgba(8, 12, 24, 0.94);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  animation: lcarsPublishToastIn var(--lcars-motion-medium) both;
-}
-
-.lcars-publish-toast-icon {
-  font-size: 40px;
-  color: var(--lcars-green, #7be88e);
-}
-
-.lcars-publish-toast p {
-  font-size: 15px;
-  color: var(--lcars-text);
-  letter-spacing: 1px;
-}
-
-.lcars-publish-toast-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
 }
 
 /* Media Upload */

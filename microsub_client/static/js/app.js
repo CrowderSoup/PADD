@@ -356,6 +356,19 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');
 }
 
+// The sidebar "New Post" link and FAB are rendered once on full page load; htmx
+// channel switches update the URL without re-rendering them, so their href would
+// point at a stale channel. Rewrite it from the current URL at click time.
+document.body.addEventListener('click', function(e) {
+  var link = e.target.closest('a.lcars-sidebar-new-post-btn, a.lcars-fab');
+  if (!link) return;
+  var match = window.location.pathname.match(/\/channel\/([^/]+)\/?/);
+  if (!match) return;
+  var url = new URL(link.href, window.location.origin);
+  url.searchParams.set('channel', decodeURIComponent(match[1]));
+  link.href = url.toString();
+});
+
 var _toastTimer = null;
 
 function showToast(message, type, duration) {
@@ -364,13 +377,33 @@ function showToast(message, type, duration) {
   var toast = document.getElementById('lcars-toast');
   if (!toast) return;
   toast.textContent = message;
-  toast.classList.remove('lcars-toast-success', 'lcars-toast-error', 'lcars-hidden');
+  toast.classList.remove('lcars-toast-success', 'lcars-toast-error', 'lcars-toast-publish', 'lcars-hidden');
   toast.classList.add('lcars-toast-' + type);
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastTimer = setTimeout(function() {
     toast.classList.add('lcars-hidden');
     _toastTimer = null;
   }, duration);
+}
+
+function showPublishBanner(url) {
+  var toast = document.getElementById('lcars-toast');
+  if (!toast || !url) return;
+  toast.innerHTML = '';
+  var link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.textContent = 'View Post';
+  toast.appendChild(link);
+  toast.classList.remove('lcars-toast-error', 'lcars-hidden');
+  toast.classList.add('lcars-toast-success', 'lcars-toast-publish');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() {
+    toast.classList.add('lcars-hidden');
+    toast.classList.remove('lcars-toast-publish');
+    _toastTimer = null;
+  }, 6000);
 }
 
 var _errorPaths = [

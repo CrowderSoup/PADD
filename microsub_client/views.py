@@ -5,7 +5,7 @@ import logging
 import secrets
 import types
 import xml.etree.ElementTree as ET
-from urllib.parse import urlparse as _urlparse
+from urllib.parse import quote as _urlquote, urlparse as _urlparse
 
 import defusedxml.ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -422,13 +422,15 @@ def index_view(request):
         return render(request, "timeline.html", {"channels": [], "entries": []})
 
     if channels:
-        first = channels[0]
-        return redirect("timeline", channel_uid=first.get("uid", "default"))
+        target_uid = channels[0].get("uid", "default")
+    else:
+        target_uid = notifications_channel.get("uid", NOTIFICATIONS_CHANNEL_UID)
 
-    return redirect(
-        "timeline",
-        channel_uid=notifications_channel.get("uid", NOTIFICATIONS_CHANNEL_UID),
-    )
+    url = reverse("timeline", args=[target_uid])
+    published = request.GET.get("published", "")
+    if published:
+        url += "?published=" + _urlquote(published, safe="")
+    return redirect(url)
 
 
 def _parse_location(entry):
@@ -774,6 +776,7 @@ def timeline_view(request, channel_uid):
     base_ctx.update({
         "channels": channels,
         "current_channel": current_channel,
+        "published_url": request.GET.get("published", ""),
     })
     return render(request, "timeline.html", base_ctx)
 
@@ -1248,6 +1251,11 @@ def new_post_view(request):
         return HttpResponse("Not authenticated", status=400)
 
     user_url = request.session.get("user_url", "")
+    channel_uid = (
+        request.POST.get("channel", "").strip()
+        if request.method == "POST"
+        else request.GET.get("channel", "").strip()
+    )
 
     has_media_endpoint = False
     syndicate_to = []
@@ -1280,6 +1288,7 @@ def new_post_view(request):
                 "syndicate_to": syndicate_to,
                 "drafts": drafts,
                 "draft": draft,
+                "channel_uid": channel_uid,
                 "hide_fab": True,
             })
 
@@ -1311,6 +1320,7 @@ def new_post_view(request):
                 "syndicate_to": syndicate_to,
                 "drafts": drafts,
                 "draft": draft,
+                "channel_uid": channel_uid,
                 "hide_fab": True,
             })
 
@@ -1322,14 +1332,10 @@ def new_post_view(request):
             except ValueError:
                 pass
 
-        return render(request, "new_post.html", {
-            "success": True,
-            "result_url": result_url,
-            "has_media_endpoint": has_media_endpoint,
-            "syndicate_to": syndicate_to,
-            "drafts": Draft.objects.filter(user_url=user_url).order_by("-updated_at") if user_url else [],
-            "hide_fab": True,
-        })
+        redirect_url = reverse("timeline", args=[channel_uid]) if channel_uid else reverse("index")
+        if result_url:
+            redirect_url += "?published=" + _urlquote(result_url, safe="")
+        return redirect(redirect_url)
 
     # Load a specific draft if ?draft=<id> is provided
     draft = None
@@ -1345,6 +1351,7 @@ def new_post_view(request):
         "syndicate_to": syndicate_to,
         "drafts": drafts,
         "draft": draft,
+        "channel_uid": channel_uid,
         "hide_fab": True,
     })
 
@@ -1373,6 +1380,12 @@ def edit_post_view(request):
     if not post_url:
         return HttpResponse("Missing url", status=400)
 
+    channel_uid = (
+        request.POST.get("channel", "").strip()
+        if request.method == "POST"
+        else request.GET.get("channel", "").strip()
+    )
+
     has_media_endpoint = False
     try:
         config = micropub.query_config(mp_endpoint, token)
@@ -1389,6 +1402,7 @@ def edit_post_view(request):
         return render(request, "edit_post.html", {
             "error": f"Failed to load post: {exc}",
             "post_url": post_url,
+            "channel_uid": channel_uid,
             "hide_fab": True,
         })
 
@@ -1412,6 +1426,7 @@ def edit_post_view(request):
                 "draft": types.SimpleNamespace(
                     title=name, tags=tags, content=content, photos=submitted_photos,
                 ),
+                "channel_uid": channel_uid,
                 "hide_fab": True,
             })
 
@@ -1439,14 +1454,13 @@ def edit_post_view(request):
                 "draft": types.SimpleNamespace(
                     title=name, tags=tags, content=content, photos=submitted_photos,
                 ),
+                "channel_uid": channel_uid,
                 "hide_fab": True,
             })
 
-        return render(request, "edit_post.html", {
-            "success": True,
-            "post_url": post_url,
-            "hide_fab": True,
-        })
+        redirect_url = reverse("timeline", args=[channel_uid]) if channel_uid else reverse("index")
+        redirect_url += "?published=" + _urlquote(post_url, safe="")
+        return redirect(redirect_url)
 
     draft = types.SimpleNamespace(
         title=original_name,
@@ -1456,6 +1470,7 @@ def edit_post_view(request):
     )
     return render(request, "edit_post.html", {
         "post_url": post_url,
+        "channel_uid": channel_uid,
         "has_media_endpoint": has_media_endpoint,
         "draft": draft,
         "hide_fab": True,

@@ -1557,21 +1557,27 @@ class NewPostViewTests(TestCase):
 
     @patch("microsub_client.views.micropub.create_post", return_value="https://me.example/post/1")
     @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
-    def test_post_success_renders_success_with_url(self, _mock_config, _mock_create):
+    def test_post_success_redirects_with_published_param(self, _mock_config, _mock_create):
         self._auth_session()
         response = self.client.post("/new/", {"content": "Hello world"})
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context["success"])
-        self.assertEqual(response.context["result_url"], "https://me.example/post/1")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/app/?published=https%3A%2F%2Fme.example%2Fpost%2F1")
 
     @patch("microsub_client.views.micropub.create_post", return_value="")
     @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
-    def test_post_success_no_location_renders_success(self, _mock_config, _mock_create):
+    def test_post_success_no_result_url_redirects_without_published_param(self, _mock_config, _mock_create):
         self._auth_session()
         response = self.client.post("/new/", {"content": "Hello world"})
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context["success"])
-        self.assertEqual(response.context["result_url"], "")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/app/")
+
+    @patch("microsub_client.views.micropub.create_post", return_value="https://me.example/post/1")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    def test_post_success_with_channel_redirects_to_channel_timeline(self, _mock_config, _mock_create):
+        self._auth_session()
+        response = self.client.post("/new/", {"content": "Hello world", "channel": "notes"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/channel/notes/?published=https%3A%2F%2Fme.example%2Fpost%2F1")
 
     @patch("microsub_client.views.micropub.create_post", return_value="")
     @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
@@ -1807,7 +1813,7 @@ class EditPostViewTests(TestCase):
     @patch("microsub_client.views.micropub.update_post", return_value="")
     @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
     @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
-    def test_post_success_renders_toast(self, _mock_source, _mock_config, _mock_update):
+    def test_post_success_redirects_with_published_param(self, _mock_source, _mock_config, _mock_update):
         self._auth_session()
         response = self.client.post(
             "/edit/?url=https://me.example/post/1",
@@ -1818,7 +1824,25 @@ class EditPostViewTests(TestCase):
                 "photo": ["https://media.example/a.jpg", "https://media.example/b.jpg"],
             },
         )
-        self.assertContains(response, "updated successfully")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/app/?published=https%3A%2F%2Fme.example%2Fpost%2F1")
+
+    @patch("microsub_client.views.micropub.update_post", return_value="")
+    @patch("microsub_client.views.micropub.query_config", return_value=_CONFIG_EMPTY)
+    @patch("microsub_client.views.micropub.fetch_source", return_value=_SOURCE_PROPERTIES)
+    def test_post_success_with_channel_redirects_to_channel_timeline(self, _mock_source, _mock_config, _mock_update):
+        self._auth_session()
+        response = self.client.post(
+            "/edit/?url=https://me.example/post/1&channel=notes",
+            {
+                "content": "New body",
+                "name": "Old Title",
+                "tags": "python,web",
+                "channel": "notes",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/channel/notes/?published=https%3A%2F%2Fme.example%2Fpost%2F1")
 
     @patch(
         "microsub_client.views.micropub.update_post",
