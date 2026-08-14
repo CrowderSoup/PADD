@@ -13,13 +13,13 @@
     {% include "partials/draft_sidebar.html" with drafts=drafts current_draft_id=draft.pk %}
   </nav>
   <div class="lcars-channel-add">
-    <a href="{% url 'index' %}" class="lcars-channel-add-toggle lcars-channel-add-toggle--borderless">
+    <a href="{% if channel_uid %}{% url 'timeline' channel_uid=channel_uid %}{% else %}{% url 'index' %}{% endif %}" class="lcars-channel-add-toggle lcars-channel-add-toggle--borderless">
       <i class="fas fa-arrow-left"></i> Back to Timeline
     </a>
   </div>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
   <div class="lcars-sidebar-new-post">
-    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
+    <a href="{% url 'new-post' %}?channel={{ channel_uid|urlencode }}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
       <i class="fas fa-pen"></i> New Post
     </a>
   </div>
@@ -32,25 +32,11 @@
     <h2 class="lcars-channel-title">New Post</h2>
   </div>
 
-  {% if success %}
-  <div class="lcars-publish-toast">
-    <div class="lcars-publish-toast-icon"><i class="fas fa-check-circle"></i></div>
-    <p>Post published successfully!</p>
-    <div class="lcars-publish-toast-actions">
-      {% if result_url %}
-        <a href="{{ result_url }}" class="lcars-button lcars-button-blue" target="_blank" rel="noopener">View Post</a>
-      {% endif %}
-      <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange">Write Another</a>
-    </div>
-  </div>
-  {% else %}
-
   {% if error %}
   <div class="lcars-error">{{ error }}</div>
   {% endif %}
 
   {% include "partials/compose_form.html" with show_location=True show_draft_controls=True submit_label="Publish" %}
-  {% endif %}
 </div>
 
 {% endblock %}

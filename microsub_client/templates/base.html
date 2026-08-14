@@ -77,7 +77,7 @@
       </main>
     </div>
     {% if request.session.micropub_endpoint and not hide_fab %}
-    <a href="{% url 'new-post' %}" class="lcars-fab" aria-label="New Post">
+    <a href="{% url 'new-post' %}{% if channel_uid %}?channel={{ channel_uid|urlencode }}{% endif %}" class="lcars-fab" aria-label="New Post">
       <i class="fas fa-plus"></i>
     </a>
     {% endif %}

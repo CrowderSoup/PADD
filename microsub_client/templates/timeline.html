@@ -15,7 +15,7 @@
   <div class="lcars-sidebar-accent lcars-sidebar-accent-bottom"></div>
   {% if has_micropub %}
   <div class="lcars-sidebar-new-post">
-    <a href="{% url 'new-post' %}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
+    <a href="{% url 'new-post' %}?channel={{ channel_uid|urlencode }}" class="lcars-button lcars-button-orange lcars-sidebar-new-post-btn">
       <i class="fas fa-pen"></i> New Post
     </a>
   </div>
@@ -60,4 +60,17 @@
     {% include "partials/timeline_entries.html" %}
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if published_url %}
+<script>
+  showPublishBanner("{{ published_url|escapejs }}");
+  if (window.history && window.history.replaceState) {
+    var _url = new URL(window.location.href);
+    _url.searchParams.delete('published');
+    window.history.replaceState(null, '', _url);
+  }
+</script>
+{% endif %}
 {% endblock %}

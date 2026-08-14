@@ -1,6 +1,7 @@
 <form method="post" class="lcars-new-post-form" id="new-post-form"
       {% if show_draft_controls %}data-draft-save-url="{% url 'draft-save' %}"{% endif %}>
   {% csrf_token %}
+  <input type="hidden" name="channel" value="{{ channel_uid|default:'' }}">
   {% if show_draft_controls %}
   <input type="hidden" name="draft_id" id="draft-id" value="{{ draft.pk|default:'' }}">
   {% endif %}

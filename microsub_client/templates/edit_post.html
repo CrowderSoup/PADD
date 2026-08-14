@@ -10,7 +10,7 @@
   </div>
   <div class="lcars-sidebar-accent lcars-sidebar-accent-top"></div>
   <div class="lcars-channel-add">
-    <a href="{% url 'index' %}" class="lcars-channel-add-toggle lcars-channel-add-toggle--borderless">
+    <a href="{% if channel_uid %}{% url 'timeline' channel_uid=channel_uid %}{% else %}{% url 'index' %}{% endif %}" class="lcars-channel-add-toggle lcars-channel-add-toggle--borderless">
       <i class="fas fa-arrow-left"></i> Back to Timeline
     </a>
   </div>
@@ -24,17 +24,6 @@
     <h2 class="lcars-channel-title">Edit Post</h2>
   </div>
 
-  {% if success %}
-  <div class="lcars-publish-toast">
-    <div class="lcars-publish-toast-icon"><i class="fas fa-check-circle"></i></div>
-    <p>Post updated successfully!</p>
-    <div class="lcars-publish-toast-actions">
-      <a href="{{ post_url }}" class="lcars-button lcars-button-blue" target="_blank" rel="noopener">View Post</a>
-      <a href="{% url 'index' %}" class="lcars-button lcars-button-orange">Back to Timeline</a>
-    </div>
-  </div>
-  {% else %}
-
   {% if error %}
   <div class="lcars-error">{{ error }}</div>
   {% endif %}
@@ -42,7 +31,6 @@
   <p class="lcars-compose-note">Location isn&rsquo;t editable from PADD yet.</p>
 
   {% include "partials/compose_form.html" with show_location=False show_draft_controls=False submit_label="Save Changes" %}
-  {% endif %}
 </div>
 
 {% endblock %}
