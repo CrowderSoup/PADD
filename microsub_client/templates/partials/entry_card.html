@@ -102,6 +102,7 @@
     {% if entry.display_type == "like" %}
       <div class="lcars-entry-context">
         <span class="lcars-entry-action-label">Liked</span>
+        {% if entry.count > 1 %}<span class="lcars-entry-count">+{{ entry.count|add:"-1" }} more</span>{% endif %}
         {% if entry.like_of_context %}{% with ctx=entry.like_of_context %}
           <blockquote class="lcars-cite-preview">
             {% if ctx.author %}<cite class="lcars-cite-author">{% if ctx.author.photo %}<img src="{{ ctx.author.photo }}" alt="" class="lcars-cite-photo">{% endif %}{{ ctx.author.name|default:ctx.author.url }}</cite>{% endif %}
@@ -116,6 +117,7 @@
     {% elif entry.display_type == "repost" %}
       <div class="lcars-entry-context">
         <span class="lcars-entry-action-label">Reposted</span>
+        {% if entry.count > 1 %}<span class="lcars-entry-count">+{{ entry.count|add:"-1" }} more</span>{% endif %}
         {% if entry.repost_of_context %}{% with ctx=entry.repost_of_context %}
           <blockquote class="lcars-cite-preview">
             {% if ctx.author %}<cite class="lcars-cite-author">{% if ctx.author.photo %}<img src="{{ ctx.author.photo }}" alt="" class="lcars-cite-photo">{% endif %}{{ ctx.author.name|default:ctx.author.url }}</cite>{% endif %}
@@ -177,7 +179,7 @@
             <div class="lcars-entry-photos" data-count="{{ entry.photo|length }}">
               {% for photo in entry.photo %}
                 <button class="lcars-photo-btn" type="button" data-index="{{ forloop.counter0 }}" aria-label="View photo {{ forloop.counter }}">
-                  <img src="{{ photo }}" alt="" class="lcars-entry-photo" loading="lazy">
+                  <img src="{{ photo.url }}" alt="{{ photo.alt }}" class="lcars-entry-photo" loading="lazy">
                 </button>
               {% endfor %}
             </div>

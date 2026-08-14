@@ -1097,9 +1097,16 @@ class TimelineViewTests(TestCase):
             return_value={"uid": "notifications", "name": "Notifications"},
         )
         self.mock_create_channel = self._create_channel_patcher.start()
+        self._capabilities_patcher = patch(
+            "microsub_client.views.api.get_channels_full",
+            return_value={"channels": [], "_webstead": {}},
+        )
+        self.mock_get_channels_full = self._capabilities_patcher.start()
 
     def tearDown(self):
         self._create_channel_patcher.stop()
+        self._capabilities_patcher.stop()
+        cache.clear()
         super().tearDown()
 
     @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
@@ -1172,7 +1179,7 @@ class TimelineViewTests(TestCase):
     @patch("microsub_client.views.api.get_channels", return_value=[
         {"uid": "home", "name": "Home"},
     ])
-    def test_photo_with_alt_object_renders_plain_url_in_img_src(self, _mock_ch, _mock_tl):
+    def test_photo_with_alt_object_preserves_alt_text_in_img(self, _mock_ch, _mock_tl):
         session = self.client.session
         session.update(auth_session())
         session.save()
@@ -1180,7 +1187,29 @@ class TimelineViewTests(TestCase):
         response = self.client.get("/channel/home/")
 
         self.assertContains(response, 'src="https://example.com/photo.jpg"')
+        self.assertContains(response, 'alt="Sugar House"')
         self.assertNotContains(response, "&#x27;value&#x27;")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "47444002",
+            "name": "Bare photo",
+            "photo": ["https://example.com/bare.jpg"],
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_photo_without_alt_renders_empty_alt(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'src="https://example.com/bare.jpg"')
+        self.assertContains(response, 'alt=""')
 
     @patch("microsub_client.views.api.get_timeline", return_value={
         "items": [{
@@ -1361,6 +1390,138 @@ class TimelineViewTests(TestCase):
         response = self.client.get("/channel/home/")
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "edit/?url=")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "reply-1",
+            "url": "https://me.example/reply/1",
+            "in-reply-to": "https://someone.example/post/1",
+            "content": {"text": "Great point!"},
+            "_reply_context": {
+                "url": "https://someone.example/post/1",
+                "author": {"type": "card", "name": "Someone", "url": "https://someone.example/"},
+                "snippet": "Original post snippet",
+            },
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_reply_context_from_server_renders_without_live_embed_fetch(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, "Original post snippet")
+        self.assertContains(response, "Someone")
+        self.assertNotContains(response, "lcars-embed-placeholder")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "reply-2",
+            "url": "https://me.example/reply/2",
+            "in-reply-to": "https://bsky.app/profile/someone/post/abc",
+            "content": {"text": "No cached context"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_reply_without_context_falls_back_to_live_embed_fetch(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, "lcars-embed-placeholder")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "like-1",
+            "url": "https://mastodon.example/notification/1",
+            "like-of": "https://mastodon.example/status/1",
+            "_count": 5,
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_grouped_notification_shows_count_badge(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, "+4 more")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "like-2",
+            "url": "https://mastodon.example/notification/2",
+            "like-of": "https://mastodon.example/status/2",
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_single_notification_hides_count_badge(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertNotContains(response, "more</span>")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_filter_chips_hidden_when_server_lacks_capability(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertNotContains(response, "lcars-kind-chip")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_filter_chips_shown_when_server_advertises_capability(self, _mock_ch, mock_tl):
+        self.mock_get_channels_full.return_value = {
+            "channels": [],
+            "_webstead": {"timeline_filters": ["kind", "category", "author", "source"]},
+        }
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/?kind=photo")
+
+        self.assertContains(response, "lcars-kind-chip")
+        self.assertEqual(mock_tl.call_args.kwargs["kind"], ["photo"])
+
+    def test_capabilities_fetch_failure_degrades_gracefully(self):
+        self.mock_get_channels_full.side_effect = api.MicrosubError("fail")
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        with patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}}), \
+             patch("microsub_client.views.api.get_channels", return_value=[{"uid": "home", "name": "Home"}]):
+            response = self.client.get("/channel/home/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "lcars-kind-chip")
 
 
 @override_settings(STORAGES=SIMPLE_STORAGES)

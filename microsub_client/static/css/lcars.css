@@ -553,6 +553,32 @@ body {
   border-color: rgba(248, 154, 37, 0.28);
 }
 
+.lcars-kind-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.lcars-kind-chip {
+  font-size: 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--lcars-border);
+}
+
+.lcars-kind-chip.lcars-filter-active,
+.lcars-active-filter-chip {
+  cursor: pointer;
+}
+
+.lcars-active-filter-chip {
+  font-size: 10px;
+  padding: 3px 10px;
+  text-transform: none;
+  letter-spacing: 0.3px;
+}
+
 .lcars-timeline {
   width: min(100%, 980px);
   margin-inline: auto;
@@ -1278,6 +1304,20 @@ body {
   border: 1px solid rgba(241, 200, 110, 0.22);
   border-radius: 4px;
   padding: 2px 7px;
+}
+
+.lcars-entry-count {
+  display: inline-block;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--lcars-gold);
+  background: rgba(241, 200, 110, 0.07);
+  border: 1px solid rgba(241, 200, 110, 0.22);
+  border-radius: 8px;
+  padding: 1px 7px;
+  margin-bottom: 4px;
 }
 
 /* ========== Interactions ========== */

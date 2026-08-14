@@ -314,6 +314,26 @@ def _get_channels_cached(endpoint: str, token: str) -> list:
     return channels
 
 
+def _capabilities_cache_key(endpoint: str, token: str) -> str:
+    return f"channel_capabilities:{hashlib.md5(f'{endpoint}:{token}'.encode()).hexdigest()}"
+
+
+def _get_webstead_capabilities_cached(endpoint: str, token: str) -> dict:
+    """Fetch the non-spec `_webstead` capabilities block, cached independently of
+    the plain channel list so existing callers of `_get_channels_cached` are unaffected.
+    """
+    key = _capabilities_cache_key(endpoint, token)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        capabilities = api.get_channels_full(endpoint, token).get("_webstead", {})
+    except api.MicrosubError:
+        capabilities = {}
+    cache.set(key, capabilities, CHANNELS_CACHE_TTL)
+    return capabilities
+
+
 def _get_user_settings(request):
     user_url = request.session.get("user_url")
     if not user_url:
@@ -552,6 +572,7 @@ def _enrich_entries(entries, request):
         # Templates may reference entry.url in filter arguments; ensure key exists.
         entry.setdefault("url", "")
         entry["display_type"] = get_entry_type(entry)
+        entry["count"] = entry.get("_count", 1)
 
         author = entry.get("author")
         author_url = author.get("url") if isinstance(author, dict) else None
@@ -571,10 +592,17 @@ def _enrich_entries(entries, request):
                 entry[underscore_key] = val
                 if isinstance(val, dict):
                     entry[underscore_key + "_context"] = val
+        reply_context = entry.get("_reply_context")
+        if isinstance(reply_context, dict):
+            entry["in_reply_to_context"] = {
+                "author": reply_context.get("author"),
+                "content": reply_context.get("snippet", ""),
+                "url": reply_context.get("url") or entry.get("in_reply_to", ""),
+            }
         if isinstance(entry.get("category"), list):
             entry["category"] = [c for c in entry["category"] if not c.startswith("http")]
         if isinstance(entry.get("photo"), list):
-            entry["photo"] = [_photo_url(p) for p in entry["photo"]]
+            entry["photo"] = [_photo_alt_dict(p) for p in entry["photo"]]
         irt = entry.get("in_reply_to", "")
         if isinstance(irt, str) and irt.startswith("at://"):
             entry["in_reply_to_web_url"] = _bluesky_at_to_web_url(irt)
@@ -693,6 +721,32 @@ def embed_post_view(request):
     return render(request, "partials/embed_post.html", ctx)
 
 
+KIND_FILTER_CHOICES = ["like", "repost", "bookmark", "reply", "checkin", "photo", "video", "audio"]
+
+
+def _filter_qs_without(request, *drop_keys):
+    qd = request.GET.copy()
+    qd.pop("after", None)
+    for key in drop_keys:
+        qd.pop(key, None)
+    return qd.urlencode()
+
+
+def _toggle_kind_qs(request, kind_value):
+    qd = request.GET.copy()
+    qd.pop("after", None)
+    kinds = qd.getlist("kind")
+    if kind_value in kinds:
+        kinds = [k for k in kinds if k != kind_value]
+    else:
+        kinds = kinds + [kind_value]
+    if kinds:
+        qd.setlist("kind", kinds)
+    else:
+        qd.pop("kind", None)
+    return qd.urlencode()
+
+
 def timeline_view(request, channel_uid):
     endpoint = request.session.get("microsub_endpoint")
     token = request.session.get("access_token")
@@ -729,9 +783,17 @@ def timeline_view(request, channel_uid):
             else:
                 unread_only = user_settings.default_filter == "unread"
 
+        capabilities = _get_webstead_capabilities_cached(endpoint, token)
+        filter_capabilities = capabilities.get("timeline_filters", [])
+
+        active_kinds = [k for k in request.GET.getlist("kind") if k]
+        active_categories = [c for c in request.GET.getlist("category") if c]
+        active_authors = [a for a in request.GET.getlist("author") if a]
+
         timeline_data = api.get_timeline(
             endpoint, token, channel_uid, after=after,
             is_read=False if unread_only else None,
+            kind=active_kinds, category=active_categories, author=active_authors,
         )
     except api.MicrosubError:
         request.session.flush()
@@ -743,9 +805,21 @@ def timeline_view(request, channel_uid):
 
     has_micropub = _enrich_entries(entries, request)
 
+    kind_filter_chips = [
+        {"value": k, "active": k in active_kinds, "qs": _toggle_kind_qs(request, k)}
+        for k in KIND_FILTER_CHOICES
+    ]
+
+    channel_name = (
+        NOTIFICATIONS_CHANNEL_NAME
+        if is_notifications_view
+        else current_channel.get("name", "") if current_channel else ""
+    )
+
     base_ctx = {
         "entries": entries,
         "channel_uid": channel_uid,
+        "channel_name": channel_name,
         "after_cursor": after_cursor,
         "unread_only": unread_only,
         "has_micropub": has_micropub,
@@ -754,6 +828,12 @@ def timeline_view(request, channel_uid):
         "infinite_scroll": user_settings.infinite_scroll,
         "notifications_channel": notifications_channel,
         "is_notifications_view": is_notifications_view,
+        "filter_capabilities": filter_capabilities,
+        "kind_filter_chips": kind_filter_chips,
+        "active_category": active_categories[0] if active_categories else "",
+        "active_author": active_authors[0] if active_authors else "",
+        "category_filter_base_qs": _filter_qs_without(request, "category"),
+        "author_filter_base_qs": _filter_qs_without(request, "author"),
     }
 
     # HTMX partial for "load more"
@@ -764,11 +844,6 @@ def timeline_view(request, channel_uid):
     if request.htmx:
         base_ctx.update({
             "channels": channels,
-            "channel_name": (
-                NOTIFICATIONS_CHANNEL_NAME
-                if is_notifications_view
-                else current_channel.get("name", "") if current_channel else ""
-            ),
             "wrap_full": True,
         })
         return render(request, "partials/channel_switch.html", base_ctx)
@@ -1365,6 +1440,13 @@ def _photo_url(item):
     if isinstance(item, dict):
         return item.get("value", "")
     return item
+
+
+def _photo_alt_dict(item):
+    """Normalize a timeline photo entry (bare URL or {"value","alt"}) to {"url","alt"}."""
+    if isinstance(item, dict):
+        return {"url": item.get("value", ""), "alt": item.get("alt", "")}
+    return {"url": item, "alt": ""}
 
 
 def edit_post_view(request):
