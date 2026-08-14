@@ -78,18 +78,31 @@ def _request(method, endpoint, token, params=None, data=None):
     return parse_json_response(resp, MicrosubError, "Microsub API error")
 
 
+def get_channels_full(endpoint, token):
+    """Fetch the raw action=channels response, including any non-spec extensions.
+
+    Returns:
+        dict: Response body with "channels" list and (on webstead) a "_webstead"
+        capabilities block, e.g. {"timeline_filters": ["kind", "category", "author", "source"]}.
+    """
+    return _request("GET", endpoint, token, params={"action": "channels"})
+
+
 def get_channels(endpoint, token):
     """Fetch all channels from the Microsub server. Returns a list of channel dicts."""
-    result = _request("GET", endpoint, token, params={"action": "channels"})
-    return result.get("channels", [])
+    return get_channels_full(endpoint, token).get("channels", [])
 
 
-def get_timeline(endpoint, token, channel_uid, after=None, is_read=None):
+def get_timeline(endpoint, token, channel_uid, after=None, is_read=None,
+                  kind=None, category=None, author=None, source=None):
     """Fetch a page of timeline entries for a channel.
 
     Args:
         after: Pagination cursor returned by a previous response.
         is_read: If True/False, filter to read/unread entries. None returns all.
+        kind, category, author, source: Optional lists of values for webstead's
+            non-spec timeline filters (see docs/microsub-extensions.md in webstead).
+            Ignored by servers that don't support them.
 
     Returns:
         dict: Response body with "items" list and optional "paging" dict.
@@ -99,6 +112,14 @@ def get_timeline(endpoint, token, channel_uid, after=None, is_read=None):
         params["after"] = after
     if is_read is not None:
         params["is_read"] = "true" if is_read else "false"
+    if kind:
+        params["kind"] = list(kind)
+    if category:
+        params["category"] = list(category)
+    if author:
+        params["author"] = list(author)
+    if source:
+        params["source"] = list(source)
     return _request("GET", endpoint, token, params=params)
 
 

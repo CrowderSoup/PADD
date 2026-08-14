@@ -77,6 +77,27 @@ class GetChannelsTests(TestCase):
         self.assertEqual(result, [])
 
 
+class GetChannelsFullTests(TestCase):
+    @patch("microsub_client.api._request")
+    def test_returns_raw_response_including_capabilities(self, mock_req):
+        mock_req.return_value = {
+            "channels": [{"uid": "default", "name": "Home"}],
+            "_webstead": {"timeline_filters": ["kind", "category", "author", "source"]},
+        }
+        result = api.get_channels_full("https://api.example/", "token")
+        self.assertEqual(result["channels"][0]["uid"], "default")
+        self.assertEqual(result["_webstead"]["timeline_filters"], ["kind", "category", "author", "source"])
+
+    @patch("microsub_client.api._request")
+    def test_get_channels_still_returns_plain_list(self, mock_req):
+        mock_req.return_value = {
+            "channels": [{"uid": "default", "name": "Home"}],
+            "_webstead": {"timeline_filters": ["kind"]},
+        }
+        result = api.get_channels("https://api.example/", "token")
+        self.assertEqual(result, [{"uid": "default", "name": "Home"}])
+
+
 class GetTimelineTests(TestCase):
     @patch("microsub_client.api._request")
     def test_passes_channel_uid(self, mock_req):
@@ -113,6 +134,33 @@ class GetTimelineTests(TestCase):
         api.get_timeline("https://api.example/", "token", "default", is_read=False)
         params = mock_req.call_args[1]["params"]
         self.assertEqual(params["is_read"], "false")
+
+    @patch("microsub_client.api._request")
+    def test_includes_kind_category_author_source_when_given(self, mock_req):
+        mock_req.return_value = {}
+        api.get_timeline(
+            "https://api.example/", "token", "default",
+            kind=["photo", "like"], category=["indieweb"],
+            author=["https://someone.example/"], source=["https://feed.example/"],
+        )
+        params = mock_req.call_args[1]["params"]
+        self.assertEqual(params["kind"], ["photo", "like"])
+        self.assertEqual(params["category"], ["indieweb"])
+        self.assertEqual(params["author"], ["https://someone.example/"])
+        self.assertEqual(params["source"], ["https://feed.example/"])
+
+    @patch("microsub_client.api._request")
+    def test_omits_filters_when_empty(self, mock_req):
+        mock_req.return_value = {}
+        api.get_timeline(
+            "https://api.example/", "token", "default",
+            kind=[], category=[], author=[], source=[],
+        )
+        params = mock_req.call_args[1]["params"]
+        self.assertNotIn("kind", params)
+        self.assertNotIn("category", params)
+        self.assertNotIn("author", params)
+        self.assertNotIn("source", params)
 
 
 class MarkReadTests(TestCase):

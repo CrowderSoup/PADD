@@ -1,0 +1,57 @@
+<div class="lcars-timeline-header" id="timeline-header">
+  <h2 class="lcars-channel-title" id="channel-title">{{ channel_name }}</h2>
+  <div class="lcars-filter-toggle">
+    {% if unread_only %}
+      <a href="{% url 'timeline' channel_uid=channel_uid %}?unread=0"
+         class="lcars-filter-btn"
+         hx-get="{% url 'timeline' channel_uid=channel_uid %}?unread=0"
+         hx-target="#timeline"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">All</a>
+      <span class="lcars-filter-btn lcars-filter-active">Unread</span>
+    {% else %}
+      <span class="lcars-filter-btn lcars-filter-active">All</span>
+      <a href="{% url 'timeline' channel_uid=channel_uid %}?unread=1"
+         class="lcars-filter-btn"
+         hx-get="{% url 'timeline' channel_uid=channel_uid %}?unread=1"
+         hx-target="#timeline"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">Unread</a>
+    {% endif %}
+  </div>
+  {% if "kind" in filter_capabilities or active_category or active_author %}
+  <div class="lcars-kind-filters">
+    {% if "kind" in filter_capabilities %}
+      {% for chip in kind_filter_chips %}
+        <a href="{% url 'timeline' channel_uid=channel_uid %}?{{ chip.qs }}"
+           class="lcars-filter-btn lcars-kind-chip{% if chip.active %} lcars-filter-active{% endif %}"
+           hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ chip.qs }}"
+           hx-target="#timeline"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           hx-indicator="#lcars-loading">{{ chip.value }}</a>
+      {% endfor %}
+    {% endif %}
+    {% if active_category %}
+      <a href="{% url 'timeline' channel_uid=channel_uid %}?{{ category_filter_base_qs }}"
+         class="lcars-filter-btn lcars-filter-active lcars-active-filter-chip"
+         hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ category_filter_base_qs }}"
+         hx-target="#timeline"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">category: {{ active_category }} &times;</a>
+    {% endif %}
+    {% if active_author %}
+      <a href="{% url 'timeline' channel_uid=channel_uid %}?{{ author_filter_base_qs }}"
+         class="lcars-filter-btn lcars-filter-active lcars-active-filter-chip"
+         hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ author_filter_base_qs }}"
+         hx-target="#timeline"
+         hx-swap="innerHTML"
+         hx-push-url="true"
+         hx-indicator="#lcars-loading">author: {{ active_author|truncatechars:30 }} &times;</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

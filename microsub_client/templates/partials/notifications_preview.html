@@ -23,6 +23,7 @@
             {% else %}
               {{ entry.url|default:"Notification"|truncatechars:80 }}
             {% endif %}
+            {% if entry.count > 1 %}<span class="lcars-entry-count">+{{ entry.count|add:"-1" }} more</span>{% endif %}
           </div>
           <div class="lcars-notifications-preview-meta">
             {% if entry.author and entry.author.name %}
