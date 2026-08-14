@@ -2491,22 +2491,3 @@ class NotificationsPreviewViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Recent Notifications")
         self.assertEqual(mock_tl.call_args.kwargs["is_read"], None)
-
-
-@override_settings(STORAGES=SIMPLE_STORAGES)
-class HarvestSettingsTests(TestCase):
-    def _auth_session(self):
-        session = self.client.session
-        session.update(auth_session())
-        session.save()
-
-    def test_settings_can_enable_harvest_toggle(self):
-        self._auth_session()
-        response = self.client.post("/settings/", {
-            "default_filter": "all",
-            "mark_read_behavior": "explicit",
-            "show_gardn_harvest": "on",
-        })
-        self.assertEqual(response.status_code, 302)
-        settings_obj = UserSettings.objects.get(user_url="https://me.example/")
-        self.assertTrue(settings_obj.show_gardn_harvest)

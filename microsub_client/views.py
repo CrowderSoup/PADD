@@ -251,7 +251,6 @@ def settings_view(request):
         user_settings.mark_read_behavior = mrb if mrb in _valid_mrb else UserSettings.MarkReadBehavior.EXPLICIT
         user_settings.expand_content = request.POST.get("expand_content") == "on"
         user_settings.infinite_scroll = request.POST.get("infinite_scroll") == "on"
-        user_settings.show_gardn_harvest = request.POST.get("show_gardn_harvest") == "on"
         user_settings.save()
         cache.delete(_user_settings_cache_key(request.session.get("user_url")))
         if request.htmx:
@@ -260,7 +259,6 @@ def settings_view(request):
                 "mark_read_behavior": user_settings.mark_read_behavior,
                 "expand_content": user_settings.expand_content,
                 "infinite_scroll": user_settings.infinite_scroll,
-                "show_gardn_harvest": user_settings.show_gardn_harvest,
             })
         return redirect("settings")
 
@@ -284,7 +282,6 @@ def settings_view(request):
         "mark_read_behavior": user_settings.mark_read_behavior,
         "expand_content": user_settings.expand_content,
         "infinite_scroll": user_settings.infinite_scroll,
-        "show_gardn_harvest": user_settings.show_gardn_harvest,
         "channels": channels,
         "notifications_channel": notifications_channel,
         "needs_reconnect_for_editing": "update" in missing_scopes,
@@ -753,7 +750,6 @@ def timeline_view(request, channel_uid):
         "expand_content": user_settings.expand_content,
         "mark_read_behavior": user_settings.mark_read_behavior,
         "infinite_scroll": user_settings.infinite_scroll,
-        "show_gardn_harvest": user_settings.show_gardn_harvest,
         "notifications_channel": notifications_channel,
         "is_notifications_view": is_notifications_view,
     }
@@ -2023,7 +2019,6 @@ def account_export_view(request):
             "mark_read_behavior": user_settings.mark_read_behavior,
             "expand_content": user_settings.expand_content,
             "infinite_scroll": user_settings.infinite_scroll,
-            "show_gardn_harvest": user_settings.show_gardn_harvest,
         },
         "drafts": drafts,
         "interactions": interactions,

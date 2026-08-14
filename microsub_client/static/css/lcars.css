@@ -1361,11 +1361,6 @@ body {
   color: var(--lcars-blue);
 }
 
-.lcars-harvest-btn:hover {
-  border-color: var(--lcars-green, #7be88e);
-  color: var(--lcars-green, #7be88e);
-}
-
 .lcars-interaction-btn.lcars-active {
   cursor: default;
   opacity: 0.85;

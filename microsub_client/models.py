@@ -73,7 +73,6 @@ class UserSettings(models.Model):
     )
     expand_content = models.BooleanField(default=False)
     infinite_scroll = models.BooleanField(default=False)
-    show_gardn_harvest = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Settings for {self.user_url}"
