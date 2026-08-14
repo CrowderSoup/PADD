@@ -210,7 +210,7 @@
     </div>
     {% endif %}
 
-    {% if has_micropub and entry.url or show_gardn_harvest and entry.url %}
+    {% if has_micropub and entry.url %}
     <div class="lcars-interactions">
       {% if has_micropub and entry.url %}
         {% include "partials/interaction_buttons.html" with kind="like" active=entry.user_liked entry_url=entry.url result_url=entry.like_result_url %}
@@ -224,15 +224,6 @@
           <span>Edit</span>
         </a>
         {% endif %}
-      {% endif %}
-      {% if show_gardn_harvest and entry.url %}
-      <button class="lcars-interaction-btn lcars-harvest-btn"
-              type="button"
-              title="Harvest to Gardn"
-              onclick="window.open('https://gardn.website/harvest/?url=' + encodeURIComponent('{{ entry.url|escapejs }}') + '&title=' + encodeURIComponent('{{ entry.name|default:entry.url|escapejs }}') + '&popup=1', 'gardn-harvest', 'width=500,height=580,resizable=yes')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
-        <span>Harvest</span>
-      </button>
       {% endif %}
     </div>
     {% if has_micropub and entry.url %}
