@@ -74,7 +74,7 @@ function _flushMarkReadQueue() {
  * - "scroll_past": marks entries read when scrolled past using IntersectionObserver
  * - "interaction": marks entries read when a micropub interaction (like/repost/reply) succeeds
  *
- * Safe to call multiple times on htmx:afterSwap — only attaches to new entries.
+ * Safe to call multiple times on htmx:after:swap — only attaches to new entries.
  *
  * @param {Document|HTMLElement} root
  */
@@ -105,13 +105,13 @@ function initMarkReadBehavior(root) {
 }
 
 // Mark entries read on successful micropub interactions when behavior is "interaction"
-document.addEventListener('htmx:afterRequest', function(evt) {
+document.addEventListener('htmx:after:request', function(evt) {
   var timeline = document.getElementById('timeline');
   if (!timeline || timeline.dataset.markReadBehavior !== 'interaction') return;
 
-  var path = evt.detail.pathInfo.requestPath;
-  if (path.match(/\/api\/micropub\/(like|repost|reply)\//) && evt.detail.successful) {
-    var article = evt.detail.elt.closest('.lcars-entry');
+  var path = evt.detail.ctx.request.action;
+  if (path.match(/\/api\/micropub\/(like|repost|reply)\//) && evt.detail.ctx.response.status < 400) {
+    var article = evt.detail.ctx.sourceElement.closest('.lcars-entry');
     if (!article) return;
     var readAction = article.querySelector('.lcars-entry-read-action');
     if (readAction) {

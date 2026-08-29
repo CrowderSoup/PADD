@@ -32,11 +32,11 @@ function toggleReplyEditor(btn) {
  * Injects the EasyMDE editor value into the HTMX request parameters.
  *
  * @param {HTMLFormElement} form - The reply form element.
- * @param {CustomEvent} event - The htmx:configRequest event.
+ * @param {CustomEvent} event - The htmx:config:request event.
  */
 function replyFormConfigRequest(form, event) {
   if (form._easymde) {
-    event.detail.parameters.content = form._easymde.value();
+    event.detail.ctx.request.body.set('content', form._easymde.value());
   }
 }
 
@@ -44,11 +44,11 @@ function replyFormConfigRequest(form, event) {
  * Guards against submitting an empty reply; adds error styling if blank.
  *
  * @param {HTMLFormElement} form - The reply form element.
- * @param {CustomEvent} event - The htmx:beforeRequest event.
+ * @param {CustomEvent} event - The htmx:before:request event.
  */
 function replyFormBeforeRequest(form, event) {
   form.classList.remove('lcars-reply-error');
-  var content = event.detail.requestConfig.parameters.content;
+  var content = event.detail.ctx.request.body.get('content');
   if (!content || !content.trim()) {
     event.preventDefault();
     form.classList.add('lcars-reply-error');
@@ -60,13 +60,13 @@ function replyFormBeforeRequest(form, event) {
  * inline error message on failure.
  *
  * @param {HTMLFormElement} form - The reply form element.
- * @param {CustomEvent} event - The htmx:afterRequest event.
+ * @param {CustomEvent} event - The htmx:after:request event.
  */
 function replyFormAfterRequest(form, event) {
-  if (event.detail.successful) {
+  if (event.detail.ctx.response.status < 400) {
     var c = form.closest('.lcars-entry-content');
     var t = document.createElement('div');
-    t.innerHTML = event.detail.xhr.responseText;
+    t.innerHTML = event.detail.ctx.text;
     var btn = t.querySelector('[data-reply-button]');
     var sent = t.querySelector('[data-reply-sent]');
     if (!btn || !sent) {
@@ -89,7 +89,7 @@ function replyFormAfterRequest(form, event) {
       err.className = 'lcars-reply-error-msg';
       form.insertBefore(err, form.querySelector('button[type=submit]'));
     }
-    err.textContent = event.detail.xhr.responseText || 'Something went wrong';
+    err.textContent = event.detail.ctx.text || 'Something went wrong';
   }
 }
 
@@ -208,7 +208,7 @@ function adjustAlertsPreviewPosition() {
   }
 }
 
-document.body.addEventListener('htmx:afterSwap', function(e) {
+document.body.addEventListener('htmx:after:swap', function(e) {
   initCollapsibles(e.target);
   initEntryMaps(e.target);
   initMarkReadBehavior(e.target);
@@ -416,29 +416,28 @@ var _errorPaths = [
   '/api/mark-unread/',
 ];
 
-function getRequestErrorMessage(xhr) {
-  if (!xhr || typeof xhr.responseText !== 'string') return '';
-  var text = xhr.responseText.trim();
+function getRequestErrorMessage(text) {
+  if (typeof text !== 'string') return '';
+  text = text.trim();
   if (!text || text.charAt(0) === '<') return '';
   if (text.length <= 180) return text;
   return text.slice(0, 177) + '...';
 }
 
-document.body.addEventListener('htmx:afterRequest', function(evt) {
-  var path = evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
+document.body.addEventListener('htmx:after:request', function(evt) {
+  var path = evt.detail.ctx && evt.detail.ctx.request && evt.detail.ctx.request.action;
   if (!path) return;
-  var requestConfig = evt.detail.requestConfig || {};
-  var method = (requestConfig.verb || '').toLowerCase();
-  var sourceEl = evt.detail.elt;
+  var method = (evt.detail.ctx.request.method || '').toLowerCase();
+  var sourceEl = evt.detail.ctx.sourceElement;
 
-  if (!evt.detail.successful) {
+  if (evt.detail.ctx.response.status >= 400) {
     var isReplyFormRequest = sourceEl && sourceEl.closest && sourceEl.closest('.lcars-reply-form');
     if (isReplyFormRequest && path.indexOf('/api/micropub/reply/') !== -1) return;
 
     var isInteractionPath = _errorPaths.some(function(p) { return path.indexOf(p) !== -1; });
     if (isInteractionPath) {
       showToast(
-        getRequestErrorMessage(evt.detail.xhr) || 'Something went wrong. Please try again.',
+        getRequestErrorMessage(evt.detail.ctx.text) || 'Something went wrong. Please try again.',
         'error'
       );
     }

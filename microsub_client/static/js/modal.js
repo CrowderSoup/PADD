@@ -40,7 +40,7 @@ function openLcarsConfirm(evt) {
   _lcarsConfirm.activeEvent = evt;
   _lcarsConfirm.previousFocus = document.activeElement;
 
-  message.textContent = evt.detail.question || 'Are you sure you want to continue?';
+  message.textContent = evt.detail.ctx.confirm || 'Are you sure you want to continue?';
   overlay.classList.remove('lcars-hidden');
   overlay.setAttribute('aria-hidden', 'false');
   document.body.classList.add('lcars-modal-open');
@@ -48,7 +48,7 @@ function openLcarsConfirm(evt) {
 }
 
 document.body.addEventListener('htmx:confirm', function(evt) {
-  if (!evt.detail || !evt.detail.question) return;
+  if (!evt.detail || !evt.detail.ctx || !evt.detail.ctx.confirm) return;
   evt.preventDefault();
   openLcarsConfirm(evt);
 });

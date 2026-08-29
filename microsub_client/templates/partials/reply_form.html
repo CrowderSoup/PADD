@@ -2,10 +2,10 @@
       hx-post="{% url 'micropub-reply' %}"
       hx-vals='{"entry_url": "{{ entry_url|escapejs }}"}'
       hx-swap="none"
-      hx-disabled-elt="find button[type=submit]"
-      hx-on::config-request="replyFormConfigRequest(this, event)"
-      hx-on::before-request="replyFormBeforeRequest(this, event)"
-      hx-on::after-request="replyFormAfterRequest(this, event)">
+      hx-disable="find button[type=submit]"
+      hx-on::config:request="replyFormConfigRequest(this, event)"
+      hx-on::before:request="replyFormBeforeRequest(this, event)"
+      hx-on::after:request="replyFormAfterRequest(this, event)">
   <textarea name="content" class="lcars-reply-input"
             placeholder="Write a reply..." rows="3"></textarea>
   <button type="submit" class="lcars-button lcars-button-gold">Send Reply</button>
