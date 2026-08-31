@@ -35,7 +35,7 @@ function createPhotoEditor(config) {
   var editorState = {
     file: null, image: null, filter: 'none',
     cropActive: false, cropRatio: null, cropRect: null,
-    dragging: false, dragStart: {x: 0, y: 0}, dragOrigin: null,
+    dragging: false, dragStart: {x: 0, y: 0}, dragOrigin: null, resizeHandle: null,
     _objectUrl: null, _rafId: 0,
     adjustMode: false,
     adjustments: { brightness: 1, contrast: 1, saturation: 1, warmth: 0, hue: 0,
@@ -156,7 +156,12 @@ function createPhotoEditor(config) {
 
   function getCanvasCoords(e) {
     var rect = canvas.getBoundingClientRect();
-    return {x: e.clientX - rect.left, y: e.clientY - rect.top};
+    // Canvas bitmap and CSS pixels are usually identical here, but can differ
+    // on narrow screens. Crop math lives in bitmap space, so account for it.
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
   }
 
   function sizeCanvas() {
@@ -198,6 +203,19 @@ function createPhotoEditor(config) {
           cropCtx.strokeStyle = '#f89a25';
           cropCtx.lineWidth = 2;
           cropCtx.strokeRect(r.x, r.y, r.w, r.h);
+          // Big, high-contrast handles make the crop frame discoverable and
+          // give fingers a visible target. The actual hit area is larger still.
+          var handleRadius = Math.max(7, Math.min(11, canvas.width / 35));
+          cropCtx.fillStyle = '#f89a25';
+          cropCtx.strokeStyle = '#101522';
+          cropCtx.lineWidth = 2;
+          [[r.x, r.y], [r.x + r.w, r.y],
+           [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].forEach(function(point) {
+            cropCtx.beginPath();
+            cropCtx.arc(point[0], point[1], handleRadius, 0, Math.PI * 2);
+            cropCtx.fill();
+            cropCtx.stroke();
+          });
         }
       }
     } else {
@@ -233,6 +251,17 @@ function createPhotoEditor(config) {
         ctx.strokeStyle = '#f89a25';
         ctx.lineWidth = 2;
         ctx.strokeRect(r.x, r.y, r.w, r.h);
+        var handleRadius = Math.max(7, Math.min(11, canvas.width / 35));
+        ctx.fillStyle = '#f89a25';
+        ctx.strokeStyle = '#101522';
+        ctx.lineWidth = 2;
+        [[r.x, r.y], [r.x + r.w, r.y],
+         [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].forEach(function(point) {
+          ctx.beginPath();
+          ctx.arc(point[0], point[1], handleRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
       }
     }
   }
@@ -358,6 +387,7 @@ function createPhotoEditor(config) {
     var cropActions = overlay.querySelector('.photo-editor-crop-actions');
     if (cropActions) cropActions.classList.toggle('lcars-hidden', !editorState.cropActive);
     if (canvas) canvas.style.cursor = editorState.cropActive ? 'crosshair' : 'default';
+    if (canvas) canvas.classList.toggle('photo-editor-canvas--crop-active', editorState.cropActive);
 
     var adjustBtnEl = document.getElementById('photo-editor-adjust-btn');
     if (adjustBtnEl) adjustBtnEl.classList.toggle('photo-editor-adjust-btn--active', editorState.adjustMode);
@@ -415,6 +445,32 @@ function createPhotoEditor(config) {
     }
     renderCanvas();
     pushHistory();
+  }
+
+  function activateTool(name) {
+    var controls = overlay ? overlay.querySelector('.photo-editor-controls') : null;
+    if (!controls) return;
+    controls.dataset.activeTool = name;
+    controls.querySelectorAll('[data-editor-tool]').forEach(function(btn) {
+      var active = btn.dataset.editorTool === name;
+      btn.classList.toggle('photo-editor-tool-btn--active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    // Filters and manual adjustments are alternate render modes. Crop and
+    // rotate merely change which controls are visible and preserve that mode.
+    if (name === 'filters' || name === 'adjust') {
+      editorState.adjustMode = name === 'adjust';
+      var filterStrip = controls.querySelector('.photo-editor-filter-strip');
+      var adjustPanel = document.getElementById('photo-editor-adjustments');
+      var adjustBtn = document.getElementById('photo-editor-adjust-btn');
+      var modeLabel = document.getElementById('photo-editor-mode-label');
+      if (filterStrip) filterStrip.classList.toggle('lcars-hidden', editorState.adjustMode);
+      if (adjustPanel) adjustPanel.classList.toggle('lcars-hidden', !editorState.adjustMode);
+      if (adjustBtn) adjustBtn.classList.toggle('photo-editor-adjust-btn--active', editorState.adjustMode);
+      if (modeLabel) modeLabel.textContent = editorState.adjustMode ? 'Adjust' : 'Filters';
+      renderCanvas();
+    }
   }
 
   function calcCropRect(startX, startY, endX, endY) {
@@ -483,6 +539,7 @@ function createPhotoEditor(config) {
     var actions = overlay ? overlay.querySelector('.photo-editor-crop-actions') : null;
     if (actions) actions.classList.toggle('lcars-hidden', !editorState.cropActive);
     if (canvas) canvas.style.cursor = editorState.cropActive ? 'crosshair' : 'default';
+    if (canvas) canvas.classList.toggle('photo-editor-canvas--crop-active', editorState.cropActive);
     renderCanvas();
     pushHistory();
   }
@@ -716,18 +773,22 @@ function createPhotoEditor(config) {
   function openEditor(file) {
     if (!overlay || !canvas || (!glRenderer && !ctx)) return;
     editorState.file = file;
+    activateTool('filters');
     editorState.filter = 'none';
     editorState.cropActive = false;
     editorState.cropRatio = null;
     editorState.cropRect = null;
     editorState.dragging = false;
     editorState.dragOrigin = null;
+    editorState.resizeHandle = null;
+    if (canvas) canvas.classList.remove('photo-editor-canvas--crop-active');
     editorState.rotateAngle = 0;
     editorState.cwAngle = 0;
 
     overlay.querySelectorAll('.photo-editor-filter-btn').forEach(function(btn) {
       btn.classList.toggle('photo-editor-filter-btn--active', btn.dataset.filter === 'none');
     });
+
     overlay.querySelectorAll('.photo-editor-crop-preset-btn').forEach(function(btn) {
       btn.classList.remove('photo-editor-crop-preset-btn--active');
     });
@@ -911,6 +972,12 @@ function createPhotoEditor(config) {
       });
     }
 
+    overlay.querySelectorAll('[data-editor-tool]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        activateTool(this.dataset.editorTool);
+      });
+    });
+
     overlay.querySelectorAll('.photo-editor-filter-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setFilter(this.dataset.filter);
@@ -941,6 +1008,7 @@ function createPhotoEditor(config) {
       var cropActions = overlay.querySelector('.photo-editor-crop-actions');
       if (cropActions) cropActions.classList.add('lcars-hidden');
       if (canvas) canvas.style.cursor = 'default';
+      if (canvas) canvas.classList.remove('photo-editor-canvas--crop-active');
     }
 
     var rotateCcwBtn = document.getElementById('photo-editor-rotate-ccw');
@@ -1039,9 +1107,63 @@ function createPhotoEditor(config) {
     }
 
     if (canvas) {
+      function getCropHandle(pos) {
+        var r = editorState.cropRect;
+        if (!r) return null;
+        // 28 canvas pixels is deliberately forgiving for a fingertip.
+        var hit = Math.max(28, Math.min(canvas.width, canvas.height) * 0.08);
+        var handles = {
+          nw: {x: r.x, y: r.y}, ne: {x: r.x + r.w, y: r.y},
+          sw: {x: r.x, y: r.y + r.h}, se: {x: r.x + r.w, y: r.y + r.h}
+        };
+        var found = null;
+        Object.keys(handles).some(function(name) {
+          var p = handles[name];
+          if (Math.hypot(pos.x - p.x, pos.y - p.y) <= hit) {
+            found = name;
+            return true;
+          }
+          return false;
+        });
+        return found;
+      }
+
+      function resizeCrop(pos) {
+        var origin = editorState.dragOrigin;
+        var handle = editorState.resizeHandle;
+        if (!origin || !handle) return;
+        var anchorX = handle.indexOf('w') !== -1 ? origin.x + origin.w : origin.x;
+        var anchorY = handle.indexOf('n') !== -1 ? origin.y + origin.h : origin.y;
+        var x = Math.max(0, Math.min(canvas.width, pos.x));
+        var y = Math.max(0, Math.min(canvas.height, pos.y));
+        var w = Math.abs(x - anchorX);
+        var h = Math.abs(y - anchorY);
+
+        if (editorState.cropRatio) {
+          if (w / Math.max(h, 1) > editorState.cropRatio) h = w / editorState.cropRatio;
+          else w = h * editorState.cropRatio;
+          var maxW = handle.indexOf('w') !== -1 ? anchorX : canvas.width - anchorX;
+          var maxH = handle.indexOf('n') !== -1 ? anchorY : canvas.height - anchorY;
+          var scale = Math.min(1, maxW / Math.max(w, 1), maxH / Math.max(h, 1));
+          w *= scale;
+          h *= scale;
+        }
+        if (w < 20 || h < 20) return;
+        editorState.cropRect = {
+          x: handle.indexOf('w') !== -1 ? anchorX - w : anchorX,
+          y: handle.indexOf('n') !== -1 ? anchorY - h : anchorY,
+          w: w, h: h
+        };
+      }
+
       function startDrag(pos) {
         var r = editorState.cropRect;
-        if (r && pos.x >= r.x && pos.x <= r.x + r.w &&
+        var handle = getCropHandle(pos);
+        if (handle) {
+          editorState.dragging = 'resize';
+          editorState.resizeHandle = handle;
+          editorState.dragOrigin = {x: r.x, y: r.y, w: r.w, h: r.h};
+        } else if (r && pos.x >= r.x && pos.x <= r.x + r.w &&
                  pos.y >= r.y && pos.y <= r.y + r.h) {
           editorState.dragging = 'move';
           editorState.dragOrigin = {x: r.x, y: r.y};
@@ -1053,7 +1175,9 @@ function createPhotoEditor(config) {
       }
 
       function updateDrag(pos) {
-        if (editorState.dragging === 'move') {
+        if (editorState.dragging === 'resize') {
+          resizeCrop(pos);
+        } else if (editorState.dragging === 'move') {
           var r = editorState.cropRect;
           var nx = Math.max(0, Math.min(editorState.dragOrigin.x + pos.x - editorState.dragStart.x,
                                        canvas.width - r.w));
@@ -1072,44 +1196,36 @@ function createPhotoEditor(config) {
         });
       }
 
-      canvas.addEventListener('mousedown', function(e) {
+      canvas.addEventListener('pointerdown', function(e) {
         if (!editorState.cropActive) return;
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
         startDrag(getCanvasCoords(e));
       });
-      canvas.addEventListener('mousemove', function(e) {
+      canvas.addEventListener('pointermove', function(e) {
         var pos = getCanvasCoords(e);
         if (editorState.dragging) {
+          e.preventDefault();
           updateDrag(pos);
         } else if (editorState.cropActive) {
+          var handle = getCropHandle(pos);
           var r = editorState.cropRect;
-          canvas.style.cursor = (r && pos.x >= r.x && pos.x <= r.x + r.w &&
+          canvas.style.cursor = handle ? handle + '-resize' :
+            (r && pos.x >= r.x && pos.x <= r.x + r.w &&
                                      pos.y >= r.y && pos.y <= r.y + r.h)
             ? 'move' : 'crosshair';
         }
       });
-      canvas.addEventListener('mouseup', function() {
+      function finishPointerDrag(e) {
         var wasDragging = editorState.dragging;
         editorState.dragging = false;
         editorState.dragOrigin = null;
+        editorState.resizeHandle = null;
+        if (e && canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
         if (wasDragging) pushHistory();
-      });
-
-      canvas.addEventListener('touchstart', function(e) {
-        if (!editorState.cropActive) return;
-        e.preventDefault();
-        startDrag(getCanvasCoords(e.touches[0]));
-      }, {passive: false});
-      canvas.addEventListener('touchmove', function(e) {
-        if (!editorState.dragging) return;
-        e.preventDefault();
-        updateDrag(getCanvasCoords(e.touches[0]));
-      }, {passive: false});
-      canvas.addEventListener('touchend', function() {
-        var wasDragging = editorState.dragging;
-        editorState.dragging = false;
-        editorState.dragOrigin = null;
-        if (wasDragging) pushHistory();
-      });
+      }
+      canvas.addEventListener('pointerup', finishPointerDrag);
+      canvas.addEventListener('pointercancel', finishPointerDrag);
     }
   }
 
