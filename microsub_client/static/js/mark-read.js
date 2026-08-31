@@ -1,11 +1,7 @@
 var _markReadQueue = { entries: [], channel: null, url: null, timer: null };
 
 function _getCsrfToken() {
-  var hxHeaders = document.body.getAttribute('hx-headers');
-  if (hxHeaders) {
-    try { return JSON.parse(hxHeaders)['X-CSRFToken']; } catch (e) {}
-  }
-  return '';
+  return document.body.dataset.csrfToken || '';
 }
 
 function _flushMarkReadQueue() {

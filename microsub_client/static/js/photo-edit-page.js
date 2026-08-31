@@ -11,7 +11,7 @@
   var config = window.PADD_PHOTO_EDIT;
   if (!config) return;
 
-  var csrfToken = JSON.parse(document.body.getAttribute('hx-headers') || '{}')['X-CSRFToken'] || '';
+  var csrfToken = document.body.dataset.csrfToken || '';
 
   function goBack() {
     window.location.href = config.backUrl;

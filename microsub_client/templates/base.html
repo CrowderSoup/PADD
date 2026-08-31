@@ -11,6 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PADD">
+  <meta name="htmx-config" content='{"noSwap":[204,304,"4xx","5xx"]}'>
   <link rel="apple-touch-icon" href="{% static 'logo.svg' %}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha384-DyZ88mC6Up2uqS4h/KRgHuoeGwBcD4Ng9SiP4dIRy0EXTlnuz47vAwmeGwVChigm" crossorigin="anonymous">
   <link rel="stylesheet" href="https://unpkg.com/easymde@2.21.0/dist/easymde.min.css" integrity="sha384-ZoLYv3S+AsZX+zhbN1D1+WPpc8f+DmLfxfgw+qn0Nq8wJPOYQQXEW5ZrRhcGozlG" crossorigin="anonymous">
@@ -21,7 +22,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
   {% block extra_head %}{% endblock %}
 </head>
-<body hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<body data-csrf-token="{{ csrf_token }}" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <div class="lcars-app">
     <div class="lcars-loading htmx-indicator" id="lcars-loading">
       <div class="lcars-scan-line"></div>
