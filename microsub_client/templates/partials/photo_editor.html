@@ -33,7 +33,7 @@ of the modal's default hidden-until-opened state.
             <canvas id="photo-editor-crop-canvas" aria-hidden="true"
                     style="position:absolute;top:0;left:0;pointer-events:none"></canvas>
           </div>
-          <div class="photo-editor-crop-hint lcars-hidden">Drag inside to move &middot; drag outside to redraw</div>
+          <div class="photo-editor-crop-hint lcars-hidden">Drag the frame to move &middot; pull a corner to resize</div>
           <button type="button" id="photo-editor-compare-btn" class="photo-editor-compare-btn"
                   title="Press and hold to compare with the original" aria-label="Compare with original" aria-pressed="false">
             <i class="fas fa-adjust"></i>
@@ -43,7 +43,21 @@ of the modal's default hidden-until-opened state.
             <div class="photo-editor-processing-label" id="photo-editor-processing-label">Processing&hellip;</div>
           </div>
         </div>
-        <div class="photo-editor-controls">
+        <div class="photo-editor-controls" data-active-tool="filters">
+          <nav class="photo-editor-tool-nav" aria-label="Photo editing tools">
+            <button type="button" class="photo-editor-tool-btn photo-editor-tool-btn--active" data-editor-tool="filters" aria-pressed="true">
+              <i class="fas fa-magic" aria-hidden="true"></i><span>Filters</span>
+            </button>
+            <button type="button" class="photo-editor-tool-btn" data-editor-tool="adjust" aria-pressed="false">
+              <i class="fas fa-sliders-h" aria-hidden="true"></i><span>Adjust</span>
+            </button>
+            <button type="button" class="photo-editor-tool-btn" data-editor-tool="crop" aria-pressed="false">
+              <i class="fas fa-crop-alt" aria-hidden="true"></i><span>Crop</span>
+            </button>
+            <button type="button" class="photo-editor-tool-btn" data-editor-tool="rotate" aria-pressed="false">
+              <i class="fas fa-sync-alt" aria-hidden="true"></i><span>Rotate</span>
+            </button>
+          </nav>
           <div class="photo-editor-controls-header">
             <span class="photo-editor-section-label" id="photo-editor-mode-label">Filters</span>
             <div class="photo-editor-header-btns">
@@ -58,7 +72,7 @@ of the modal's default hidden-until-opened state.
               </button>
             </div>
           </div>
-          <div class="photo-editor-filter-strip">
+          <div class="photo-editor-filter-strip photo-editor-tool-panel" data-tool-panel="filters">
             <button type="button" class="photo-editor-filter-btn photo-editor-filter-btn--active" data-filter="none">
               <canvas class="photo-editor-filter-preview" width="48" height="48"></canvas>
               <span class="photo-editor-filter-name">None</span>
@@ -100,7 +114,7 @@ of the modal's default hidden-until-opened state.
               <span class="photo-editor-filter-name">Chrome</span>
             </button>
           </div>
-          <div class="photo-editor-adjustments lcars-hidden" id="photo-editor-adjustments">
+          <div class="photo-editor-adjustments photo-editor-tool-panel lcars-hidden" id="photo-editor-adjustments" data-tool-panel="adjust">
             <div class="photo-editor-adjust-row">
               <span class="photo-editor-adjust-label">Brightness</span>
               <input type="range" class="photo-editor-adjust-slider" id="adj-brightness"
@@ -156,43 +170,47 @@ of the modal's default hidden-until-opened state.
               <span class="photo-editor-adjust-val" id="adj-sharpness-val">0%</span>
             </div>
           </div>
-          <div class="photo-editor-section-label">Crop</div>
-          <div class="photo-editor-crop-presets">
-            <button type="button" class="photo-editor-crop-preset-btn" data-ratio="">Free</button>
-            <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1">1:1</button>
-            <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.333">4:3</button>
-            <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.5">3:2</button>
-            <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.778">16:9</button>
-            <button type="button" class="photo-editor-crop-preset-btn" data-ratio="0.5625">9:16</button>
-          </div>
-          <div class="photo-editor-crop-actions lcars-hidden">
-            <button type="button" id="photo-editor-reset-crop" class="lcars-button lcars-button-blue">Reset</button>
-          </div>
-          <div class="photo-editor-section-label">Rotate</div>
-          <div class="photo-editor-rotate-btns">
-            <button type="button" id="photo-editor-rotate-ccw" class="photo-editor-rotate-btn" title="Rotate 90° counter-clockwise">
-              <i class="fas fa-undo"></i>
-            </button>
-            <button type="button" id="photo-editor-rotate-cw" class="photo-editor-rotate-btn" title="Rotate 90° clockwise">
-              <i class="fas fa-redo"></i>
-            </button>
-          </div>
-          <div class="photo-editor-rotate-fine">
-            <div class="photo-editor-rotate-fine-row">
-              <span class="photo-editor-adjust-label">Straighten</span>
-              <input type="range" id="photo-editor-rotate-slider" class="photo-editor-adjust-slider"
-                     min="-45" max="45" step="0.5" value="0">
-              <span id="photo-editor-rotate-val" class="photo-editor-adjust-val">0&deg;</span>
+          <div class="photo-editor-tool-panel photo-editor-tool-panel--stack" data-tool-panel="crop">
+            <div class="photo-editor-section-label">Aspect ratio</div>
+            <div class="photo-editor-crop-presets">
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="">Free</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1">1:1</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.333">4:3</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.5">3:2</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="1.778">16:9</button>
+              <button type="button" class="photo-editor-crop-preset-btn" data-ratio="0.5625">9:16</button>
             </div>
-            <div class="photo-editor-rotate-actions lcars-hidden" id="photo-editor-rotate-actions">
-              <button type="button" id="photo-editor-cancel-rotate" class="lcars-button lcars-button-blue">Cancel</button>
+            <div class="photo-editor-crop-actions lcars-hidden">
+              <button type="button" id="photo-editor-reset-crop" class="lcars-button lcars-button-blue">Reset</button>
+            </div>
+          </div>
+          <div class="photo-editor-tool-panel photo-editor-tool-panel--stack" data-tool-panel="rotate">
+            <div class="photo-editor-section-label">Rotate and straighten</div>
+            <div class="photo-editor-rotate-btns">
+              <button type="button" id="photo-editor-rotate-ccw" class="photo-editor-rotate-btn" title="Rotate 90° counter-clockwise">
+                <i class="fas fa-undo"></i><span>Left</span>
+              </button>
+              <button type="button" id="photo-editor-rotate-cw" class="photo-editor-rotate-btn" title="Rotate 90° clockwise">
+                <i class="fas fa-redo"></i><span>Right</span>
+              </button>
+            </div>
+            <div class="photo-editor-rotate-fine">
+              <div class="photo-editor-rotate-fine-row">
+                <span class="photo-editor-adjust-label">Straighten</span>
+                <input type="range" id="photo-editor-rotate-slider" class="photo-editor-adjust-slider"
+                       min="-45" max="45" step="0.5" value="0">
+                <span id="photo-editor-rotate-val" class="photo-editor-adjust-val">0&deg;</span>
+              </div>
+              <div class="photo-editor-rotate-actions lcars-hidden" id="photo-editor-rotate-actions">
+                <button type="button" id="photo-editor-cancel-rotate" class="lcars-button lcars-button-blue">Cancel</button>
+              </div>
             </div>
           </div>
         </div>
       </div>
       <div class="photo-editor-actions">
         <button type="button" id="photo-editor-cancel" class="lcars-button lcars-button-blue">Cancel</button>
-        <button type="button" id="photo-editor-upload" class="lcars-button lcars-button-orange">Upload</button>
+        <button type="button" id="photo-editor-upload" class="lcars-button lcars-button-orange">{% if photo_editor_open %}Save Photo{% else %}Upload{% endif %}</button>
       </div>
     </div>
   </div>
