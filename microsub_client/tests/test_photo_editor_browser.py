@@ -265,6 +265,12 @@ class PhotoEditorTouchBrowserTests(StaticLiveServerTestCase):
             driver.execute("return getComputedStyle(document.querySelector('[data-tool-panel=\"adjust\"]')).display;"),
             "none",
         )
+        # Adjustment rows scroll beneath the sticky preview. Its full-width
+        # matte must be opaque or they bleed through beside portrait photos.
+        self.assertEqual(
+            driver.execute("return getComputedStyle(document.querySelector('.photo-editor-canvas-wrap')).backgroundColor;"),
+            "rgb(7, 10, 18)",
+        )
         driver.execute("document.querySelector('[data-editor-tool=\"crop\"]').click();")
         wait_until(driver, "document.querySelector('.photo-editor-controls').dataset.activeTool === 'crop'")
         driver.execute("document.querySelector('[data-ratio=\"1\"]').click();")

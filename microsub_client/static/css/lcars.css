@@ -4462,6 +4462,10 @@ body.lcars-modal-open {
     position: sticky;
     top: 0;
     z-index: 3;
+    /* Controls scroll beneath this sticky surface. Keep the full preview
+       matte opaque so portrait/landscape gutters never reveal them. */
+    background: var(--lcars-bg);
+    isolation: isolate;
     border-color: rgba(248, 154, 37, 0.45);
     box-shadow: 0 8px 18px rgba(5, 8, 16, 0.7);
   }
