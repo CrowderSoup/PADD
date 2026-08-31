@@ -65,10 +65,10 @@ function startChannelRename(btn, uid, currentName) {
  * Resets and hides the add-channel form on successful submission.
  *
  * @param {HTMLFormElement} form - The add-channel form element.
- * @param {CustomEvent} event - The htmx:afterRequest event.
+ * @param {CustomEvent} event - The htmx:after:request event.
  */
 function channelAddFormAfterRequest(form, event) {
-  if (event.detail.successful) {
+  if (event.detail.ctx.response.status < 400) {
     form.reset();
     form.classList.add('lcars-hidden');
     form.previousElementSibling.classList.remove('lcars-hidden');
@@ -76,16 +76,16 @@ function channelAddFormAfterRequest(form, event) {
 }
 
 // Refresh visible timeline after successful "Mark as read" channel action.
-document.body.addEventListener('htmx:afterRequest', function(evt) {
+document.body.addEventListener('htmx:after:request', function(evt) {
   var timeline = document.getElementById('timeline');
   if (!timeline) return;
-  if (!window.PADD_URLS || evt.detail.pathInfo.requestPath !== window.PADD_URLS.channelMarkRead) return;
-  if (!evt.detail.successful) return;
+  if (!window.PADD_URLS || evt.detail.ctx.request.action !== window.PADD_URLS.channelMarkRead) return;
+  if (evt.detail.ctx.response.status >= 400) return;
 
   htmx.ajax('GET', window.location.pathname + window.location.search, {
     target: '#main-content',
     swap: 'innerHTML',
-    pushURL: false,
+    push: false,
   });
 });
 

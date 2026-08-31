@@ -42,7 +42,7 @@
 
   // --- Autosave ---
 
-  var csrfToken = JSON.parse(document.body.getAttribute('hx-headers') || '{}')['X-CSRFToken'] || '';
+  var csrfToken = document.body.dataset.csrfToken || '';
   var draftSaveUrl = form ? form.dataset.draftSaveUrl : '';
   var autosaveReady = false;
   var autosaveTimer = null;
