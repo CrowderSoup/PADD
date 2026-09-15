@@ -1523,6 +1523,100 @@ class TimelineViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "lcars-kind-chip")
 
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "note-1",
+            "url": "https://example.com/notes/1",
+            "content": {"text": "hello"},
+            "category": ["indieweb", "django"],
+            "author": {"name": "Aaron", "url": "https://aaron.example/"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_tags_and_author_filter_unclickable_without_capability(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, '<span class="lcars-entry-tag">indieweb</span>')
+        self.assertNotContains(response, "Filter by this author")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "note-1",
+            "url": "https://example.com/notes/1",
+            "content": {"text": "hello"},
+            "category": ["indieweb", "django"],
+            "author": {"name": "Aaron", "url": "https://aaron.example/"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_tags_clickable_when_server_advertises_category_capability(self, _mock_ch, _mock_tl):
+        self.mock_get_channels_full.return_value = {
+            "channels": [],
+            "_webstead": {"timeline_filters": ["kind", "category", "author", "source"]},
+        }
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, '<a href="/channel/home/?category=indieweb"')
+        self.assertContains(response, 'hx-get="/channel/home/?category=indieweb"')
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "note-1",
+            "url": "https://example.com/notes/1",
+            "content": {"text": "hello"},
+            "author": {"name": "Aaron", "url": "https://aaron.example/"},
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_filter_by_author_action_shown_when_server_advertises_author_capability(self, _mock_ch, _mock_tl):
+        self.mock_get_channels_full.return_value = {
+            "channels": [],
+            "_webstead": {"timeline_filters": ["kind", "category", "author", "source"]},
+        }
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, "Filter by this author")
+        self.assertContains(response, "hx-get=\"/channel/home/?author=https%3A//aaron.example/\"")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_clicking_tag_sets_category_filter(self, _mock_ch, mock_tl):
+        self.mock_get_channels_full.return_value = {
+            "channels": [],
+            "_webstead": {"timeline_filters": ["kind", "category", "author", "source"]},
+        }
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/?category=indieweb")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_tl.call_args.kwargs["category"], ["indieweb"])
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):
