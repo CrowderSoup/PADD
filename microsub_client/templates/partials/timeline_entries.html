@@ -12,7 +12,7 @@
 {% if after_cursor %}
 {% if infinite_scroll %}
 <div class="lcars-load-more lcars-load-more-sentinel"
-     hx-get="{% url 'timeline' channel_uid=channel_uid %}?after={{ after_cursor }}{% if unread_only %}&unread=1{% endif %}"
+     hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ load_more_qs }}{% if load_more_qs %}&{% endif %}after={{ after_cursor }}"
      hx-trigger="intersect once root:#main-content"
      hx-target="this"
      hx-swap="outerHTML"
@@ -24,7 +24,7 @@
 {% else %}
 <div class="lcars-load-more">
   <button class="lcars-button lcars-button-blue"
-          hx-get="{% url 'timeline' channel_uid=channel_uid %}?after={{ after_cursor }}{% if unread_only %}&unread=1{% endif %}"
+          hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ load_more_qs }}{% if load_more_qs %}&{% endif %}after={{ after_cursor }}"
           hx-target="closest .lcars-load-more"
           hx-swap="outerHTML"
           hx-indicator="#lcars-loading">

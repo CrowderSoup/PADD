@@ -1617,6 +1617,35 @@ class TimelineViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_tl.call_args.kwargs["category"], ["indieweb"])
 
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "note-1",
+            "url": "https://example.com/notes/1",
+            "content": {"text": "hello"},
+            "author": {"name": "Aaron", "url": "https://aaron.example/"},
+        }],
+        "paging": {"after": "cursor123"},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_load_more_link_preserves_active_filters(self, _mock_ch, _mock_tl):
+        self.mock_get_channels_full.return_value = {
+            "channels": [],
+            "_webstead": {"timeline_filters": ["kind", "category", "author", "source"]},
+        }
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get(
+            "/channel/home/?author=https%3A%2F%2Faaron.example%2F&kind=photo"
+        )
+
+        self.assertContains(response, "author=https%3A//aaron.example/")
+        self.assertContains(response, "kind=photo")
+        self.assertContains(response, "after=cursor123")
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class SettingsViewTests(TestCase):

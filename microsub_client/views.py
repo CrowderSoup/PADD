@@ -834,6 +834,7 @@ def timeline_view(request, channel_uid):
         "active_author": active_authors[0] if active_authors else "",
         "category_filter_base_qs": _filter_qs_without(request, "category"),
         "author_filter_base_qs": _filter_qs_without(request, "author"),
+        "load_more_qs": _filter_qs_without(request),
     }
 
     # HTMX partial for "load more"
