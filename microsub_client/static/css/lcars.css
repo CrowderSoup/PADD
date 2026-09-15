@@ -1306,6 +1306,22 @@ body {
   padding: 2px 7px;
 }
 
+a.lcars-entry-tag {
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+a.lcars-entry-tag:hover {
+  background: rgba(241, 200, 110, 0.18);
+  border-color: var(--lcars-gold);
+}
+
+.lcars-entry-tag-active {
+  background: var(--lcars-gold);
+  color: var(--lcars-bg);
+}
+
 .lcars-entry-count {
   display: inline-block;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;

@@ -29,6 +29,14 @@
           <div class="lcars-author-actions">
             <button class="lcars-author-actions-btn" type="button" title="Author actions">&#8942;</button>
             <div class="lcars-author-actions-menu">
+              {% if "author" in filter_capabilities %}
+              <button hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ author_filter_base_qs }}{% if author_filter_base_qs %}&{% endif %}author={{ entry.author.url|urlencode }}"
+                      hx-target="#timeline"
+                      hx-swap="innerHTML"
+                      hx-push-url="true"
+                      hx-indicator="#lcars-loading"
+                      type="button">Filter by this author</button>
+              {% endif %}
               <button hx-post="{% url 'mute-user' %}"
                       hx-vals='{"author_url": "{{ entry.author.url|escapejs }}", "channel": "{{ channel_uid|escapejs }}"}'
                       hx-target="closest article"
@@ -207,7 +215,17 @@
     {% if entry.category %}
     <div class="lcars-entry-tags">
       {% for t in entry.category %}
-        <span class="lcars-entry-tag">{{ t }}</span>
+        {% if "category" in filter_capabilities %}
+          <a href="{% url 'timeline' channel_uid=channel_uid %}?{{ category_filter_base_qs }}{% if category_filter_base_qs %}&{% endif %}category={{ t|urlencode }}"
+             class="lcars-entry-tag{% if t == active_category %} lcars-entry-tag-active{% endif %}"
+             hx-get="{% url 'timeline' channel_uid=channel_uid %}?{{ category_filter_base_qs }}{% if category_filter_base_qs %}&{% endif %}category={{ t|urlencode }}"
+             hx-target="#timeline"
+             hx-swap="innerHTML"
+             hx-push-url="true"
+             hx-indicator="#lcars-loading">{{ t }}</a>
+        {% else %}
+          <span class="lcars-entry-tag">{{ t }}</span>
+        {% endif %}
       {% endfor %}
     </div>
     {% endif %}
