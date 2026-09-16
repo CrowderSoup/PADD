@@ -1,7 +1,44 @@
+import re
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 
 import bleach
 from django.utils.safestring import mark_safe
+
+_YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
+_YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def youtube_video_id(url):
+    """Extract the 11-char video ID from a YouTube URL, or None if it isn't one.
+
+    Handles youtu.be short links and youtube.com watch/embed/shorts URLs. The
+    strict length/charset check on the extracted ID also keeps anything else
+    from reaching the iframe src we build from it in the template.
+    """
+    if not url or not isinstance(url, str):
+        return None
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    host = parsed.netloc.lower()
+
+    if host in ("youtu.be", "www.youtu.be"):
+        video_id = parsed.path.lstrip("/").split("/")[0]
+    elif host in _YOUTUBE_HOSTS:
+        if parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        else:
+            video_id = ""
+            for prefix in ("/embed/", "/shorts/", "/v/"):
+                if parsed.path.startswith(prefix):
+                    video_id = parsed.path[len(prefix):].split("/")[0]
+                    break
+    else:
+        return None
+
+    return video_id if _YOUTUBE_ID_RE.match(video_id) else None
 
 ALLOWED_TAGS = [
     "a", "abbr", "acronym", "b", "blockquote", "br", "code", "em",
@@ -48,6 +85,8 @@ def get_entry_type(entry):
         return "bookmark"
     if entry.get("checkin"):
         return "checkin"
+    if entry.get("video") or youtube_video_id(entry.get("url", "")):
+        return "video"
     if entry.get("photo"):
         return "photo"
     name = entry.get("name", "").strip()

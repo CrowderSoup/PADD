@@ -3,7 +3,12 @@ from datetime import datetime, timedelta, timezone
 from django.test import TestCase
 from django.utils.safestring import SafeData
 
-from microsub_client.utils import format_datetime, get_entry_type, sanitize_content
+from microsub_client.utils import (
+    format_datetime,
+    get_entry_type,
+    sanitize_content,
+    youtube_video_id,
+)
 
 
 class SanitizeContentTests(TestCase):
@@ -62,6 +67,20 @@ class GetEntryTypeTests(TestCase):
     def test_photo(self):
         self.assertEqual(get_entry_type({"photo": "http://example.com/pic.jpg"}), "photo")
 
+    def test_video_property(self):
+        self.assertEqual(get_entry_type({"video": ["http://example.com/clip.mp4"]}), "video")
+
+    def test_youtube_url_without_video_property(self):
+        entry = {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        self.assertEqual(get_entry_type(entry), "video")
+
+    def test_video_takes_priority_over_photo(self):
+        entry = {
+            "video": ["http://example.com/clip.mp4"],
+            "photo": ["http://example.com/thumb.jpg"],
+        }
+        self.assertEqual(get_entry_type(entry), "video")
+
     def test_article_with_distinct_name(self):
         entry = {
             "name": "My Long Article Title",
@@ -99,6 +118,57 @@ class GetEntryTypeTests(TestCase):
     def test_priority_like_over_repost(self):
         entry = {"like-of": "http://a.com", "repost-of": "http://b.com"}
         self.assertEqual(get_entry_type(entry), "like")
+
+
+class YoutubeVideoIdTests(TestCase):
+    def test_watch_url(self):
+        self.assertEqual(
+            youtube_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ"
+        )
+
+    def test_watch_url_with_extra_query_params(self):
+        self.assertEqual(
+            youtube_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s"),
+            "dQw4w9WgXcQ",
+        )
+
+    def test_short_url(self):
+        self.assertEqual(youtube_video_id("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ")
+
+    def test_short_url_with_trailing_path(self):
+        self.assertEqual(youtube_video_id("https://youtu.be/dQw4w9WgXcQ?t=5"), "dQw4w9WgXcQ")
+
+    def test_shorts_url(self):
+        self.assertEqual(
+            youtube_video_id("https://www.youtube.com/shorts/dQw4w9WgXcQ"), "dQw4w9WgXcQ"
+        )
+
+    def test_embed_url(self):
+        self.assertEqual(
+            youtube_video_id("https://www.youtube.com/embed/dQw4w9WgXcQ"), "dQw4w9WgXcQ"
+        )
+
+    def test_mobile_host(self):
+        self.assertEqual(
+            youtube_video_id("https://m.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ"
+        )
+
+    def test_non_youtube_url_returns_none(self):
+        self.assertIsNone(youtube_video_id("https://example.com/watch?v=dQw4w9WgXcQ"))
+
+    def test_youtube_url_without_video_id_returns_none(self):
+        self.assertIsNone(youtube_video_id("https://www.youtube.com/"))
+
+    def test_empty_string_returns_none(self):
+        self.assertIsNone(youtube_video_id(""))
+
+    def test_none_returns_none(self):
+        self.assertIsNone(youtube_video_id(None))
+
+    def test_rejects_id_with_invalid_characters(self):
+        self.assertIsNone(
+            youtube_video_id('https://www.youtube.com/watch?v="><script>alert(1)</script>')
+        )
 
 
 class FormatDatetimeTests(TestCase):
