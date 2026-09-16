@@ -101,7 +101,7 @@
       </div>
     </div>
 
-    {% if entry.name and entry.display_type == "article" or entry.name and entry.display_type == "photo" %}
+    {% if entry.name and entry.display_type == "article" or entry.name and entry.display_type == "photo" or entry.name and entry.display_type == "video" %}
       <h3 class="lcars-entry-title">
         {% if entry.url %}<a href="{{ entry.url }}" target="_blank" rel="noopener">{{ entry.name }}</a>{% else %}{{ entry.name }}{% endif %}
       </h3>
@@ -177,11 +177,27 @@
       <p class="lcars-entry-action"><i class="fas fa-map-marker-alt"></i> Checked in</p>
     {% endif %}
 
-    {% if entry.safe_content or entry.photo %}
+    {% if entry.safe_content or entry.photo or entry.youtube_video_id or entry.video %}
       <div class="lcars-entry-collapsible{% if expand_content %} lcars-expanded{% endif %}">
         <div class="lcars-entry-collapse-inner">
           {% if entry.safe_content %}
             <div class="lcars-entry-body">{{ entry.safe_content }}</div>
+          {% endif %}
+          {% if entry.youtube_video_id %}
+            <div class="lcars-entry-video lcars-yt-facade" data-yt-id="{{ entry.youtube_video_id }}">
+              <button class="lcars-video-play-btn" type="button" aria-label="Play video{% if entry.name %}: {{ entry.name }}{% endif %}">
+                <img src="https://i.ytimg.com/vi/{{ entry.youtube_video_id }}/hqdefault.jpg" alt="" class="lcars-video-thumb" loading="lazy">
+                <span class="lcars-video-play-icon" aria-hidden="true">&#9658;</span>
+              </button>
+            </div>
+          {% elif entry.video %}
+            <div class="lcars-entry-video">
+              {% for src in entry.video %}
+                <video class="lcars-entry-video-el" controls preload="none">
+                  <source src="{{ src }}">
+                </video>
+              {% endfor %}
+            </div>
           {% endif %}
           {% if entry.photo %}
             <div class="lcars-entry-photos" data-count="{{ entry.photo|length }}">

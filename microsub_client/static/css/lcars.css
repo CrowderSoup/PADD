@@ -1122,6 +1122,70 @@ body {
   background: rgba(0, 0, 0, 0.15);
 }
 
+/* ========== Video Embed ========== */
+
+.lcars-entry-video {
+  margin-top: 12px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.lcars-entry-video-el {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  background: #000;
+}
+
+.lcars-yt-facade {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.lcars-video-play-btn {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.lcars-video-thumb {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.lcars-video-play-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.lcars-video-play-btn:hover .lcars-video-play-icon {
+  background: rgba(0, 0, 0, 0.8);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
 /* ========== Photo Lightbox ========== */
 
 #lcars-lightbox {

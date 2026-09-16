@@ -1213,6 +1213,49 @@ class TimelineViewTests(TestCase):
 
     @patch("microsub_client.views.api.get_timeline", return_value={
         "items": [{
+            "_id": "47444003",
+            "name": "A great video",
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_youtube_entry_renders_video_facade(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'data-yt-id="dQw4w9WgXcQ"')
+        self.assertContains(response, "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        self.assertContains(response, "A great video")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
+            "_id": "47444004",
+            "name": "Direct video file",
+            "video": ["https://example.com/clip.mp4"],
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_direct_video_property_renders_video_element(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'src="https://example.com/clip.mp4"')
+        self.assertContains(response, "lcars-entry-video-el")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
             "_id": "entry-1",
             "content": {"html": "<p>Long post preview</p>", "text": "Long post preview"},
         }],
