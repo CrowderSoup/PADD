@@ -37,7 +37,7 @@ from django.db.models import Count, Max, Q
 from .context_processors import _broadcasts_cache_key
 from .models import Broadcast, CachedEntry, DismissedBroadcast, Draft, Interaction, KnownUser, UserSettings
 from .outbound import UnsafeOutboundURLError, normalize_url, parse_json_response, safe_request
-from .utils import get_entry_type, sanitize_content, format_datetime
+from .utils import get_entry_type, sanitize_content, format_datetime, youtube_video_id
 
 from django_ratelimit.decorators import ratelimit
 
@@ -573,6 +573,7 @@ def _enrich_entries(entries, request):
         entry.setdefault("url", "")
         entry["display_type"] = get_entry_type(entry)
         entry["count"] = entry.get("_count", 1)
+        entry["youtube_video_id"] = youtube_video_id(entry.get("url", ""))
 
         author = entry.get("author")
         author_url = author.get("url") if isinstance(author, dict) else None
