@@ -1235,6 +1235,31 @@ class TimelineViewTests(TestCase):
 
     @patch("microsub_client.views.api.get_timeline", return_value={
         "items": [{
+            "_id": "47444003b",
+            "name": "A great video",
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "photo": ["https://example.com/feed-thumb.jpg"],
+        }],
+        "paging": {},
+    })
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "home", "name": "Home"},
+    ])
+    def test_youtube_entry_with_feed_photo_does_not_render_duplicate_thumbnail(
+        self, _mock_ch, _mock_tl
+    ):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+
+        response = self.client.get("/channel/home/")
+
+        self.assertContains(response, 'data-yt-id="dQw4w9WgXcQ"')
+        self.assertNotContains(response, "https://example.com/feed-thumb.jpg")
+        self.assertNotContains(response, "lcars-entry-photos")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={
+        "items": [{
             "_id": "47444004",
             "name": "Direct video file",
             "video": ["https://example.com/clip.mp4"],

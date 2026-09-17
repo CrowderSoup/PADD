@@ -199,7 +199,7 @@
               {% endfor %}
             </div>
           {% endif %}
-          {% if entry.photo %}
+          {% if entry.photo and not entry.youtube_video_id and not entry.video %}
             <div class="lcars-entry-photos" data-count="{{ entry.photo|length }}">
               {% for photo in entry.photo %}
                 <button class="lcars-photo-btn" type="button" data-index="{{ forloop.counter0 }}" aria-label="View photo {{ forloop.counter }}">
