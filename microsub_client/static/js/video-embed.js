@@ -9,10 +9,13 @@
     var id = container.dataset.ytId;
     if (!id) return;
 
-    // YouTube's player validates the embedding origin itself when the
-    // Referrer-Policy header (Django defaults to "same-origin") keeps the
-    // browser from sending a referrer to this cross-origin iframe. Without
-    // either one, playback fails with the undocumented "Error 153".
+    // Django's default Referrer-Policy header ("same-origin") strips the
+    // Referer header the browser would otherwise send on this cross-origin
+    // request, and YouTube's player needs it to validate the embedding
+    // site — without it playback fails with the undocumented "Error 153".
+    // The origin query param alone isn't enough; the iframe's own
+    // referrerpolicy attribute overrides the page-wide header for this
+    // element's request, which is what actually lets the referrer through.
     var origin = encodeURIComponent(window.location.origin);
     var iframe = document.createElement('iframe');
     iframe.className = 'lcars-entry-video-el';
@@ -20,6 +23,7 @@
       '?autoplay=1&origin=' + origin;
     iframe.title = 'YouTube video player';
     iframe.frameBorder = '0';
+    iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
     iframe.allowFullscreen = true;
 
