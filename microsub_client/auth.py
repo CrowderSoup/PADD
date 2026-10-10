@@ -2,6 +2,7 @@ import hashlib
 import re
 import secrets
 from base64 import urlsafe_b64encode
+from html.parser import HTMLParser
 from urllib.parse import urlencode, urljoin
 
 import mf2py
@@ -32,6 +33,23 @@ def _hcard_cache_key(url: str) -> str:
 
 def _endpoints_cache_key(url: str) -> str:
     return f"endpoints:{hashlib.md5(url.encode()).hexdigest()}"
+
+
+class _LinkTagParser(HTMLParser):
+    """<link> attributes, including unquoted and single-quoted values.
+
+    Some IndieWeb sites omit quotes (`rel=authorization_endpoint`). That is
+    valid HTML, and a regex that requires double quotes misses it.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "link":
+            return
+        self.links.append({name.lower(): (value or "") for name, value in attrs})
 
 
 def _fetch_hcard_uncached(url):
@@ -117,18 +135,22 @@ def _discover_endpoints_uncached(url):
             if match:
                 endpoints[rel] = _safe_endpoint(match.group(1))
 
-    # Check HTML <link> tags (overrides headers if both present)
-    html = resp.text
-    for rel in endpoints:
-        pattern = rf'<link[^>]+rel="{re.escape(rel)}"[^>]+href="([^"]+)"'
-        match = re.search(pattern, html)
-        if match:
-            endpoints[rel] = _safe_endpoint(match.group(1))
-        # Also try reversed attribute order
-        pattern = rf'<link[^>]+href="([^"]+)"[^>]+rel="{re.escape(rel)}"'
-        match = re.search(pattern, html)
-        if match:
-            endpoints[rel] = _safe_endpoint(match.group(1))
+    # Check HTML <link> tags (overrides headers if both present). The first
+    # matching tag for each rel wins, same as the old regex.
+    seen = set()
+    parser = _LinkTagParser()
+    parser.feed(resp.text)
+    parser.close()
+    for link in parser.links:
+        rels = {part.lower() for part in link.get("rel", "").split()}
+        href = link.get("href") or ""
+        if not rels or not href:
+            continue
+        for rel in endpoints:
+            if rel in seen or rel not in rels:
+                continue
+            endpoints[rel] = _safe_endpoint(href)
+            seen.add(rel)
 
     return endpoints
 

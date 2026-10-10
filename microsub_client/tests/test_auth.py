@@ -155,6 +155,34 @@ class DiscoverEndpointsTests(TestCase):
         self.assertEqual(result["authorization_endpoint"], "https://auth.example/auth")
 
     @patch("microsub_client.auth.requests.get")
+    def test_discovers_unquoted_rel(self, mock_get):
+        """Issue #13: rel=authorization_endpoint without quotes is valid HTML."""
+        html = '<link rel=authorization_endpoint href="https://indieauth.com/auth">'
+        mock_get.return_value = Mock(status_code=200, text=html, headers={})
+        mock_get.return_value.raise_for_status = Mock()
+        result = discover_endpoints("https://unquoted.example/")
+        self.assertEqual(result["authorization_endpoint"], "https://indieauth.com/auth")
+
+    @patch("microsub_client.auth.requests.get")
+    def test_discovers_single_quoted_and_multi_rel(self, mock_get):
+        html = "<link href='https://auth.example/auth' rel='me authorization_endpoint'>"
+        mock_get.return_value = Mock(status_code=200, text=html, headers={})
+        mock_get.return_value.raise_for_status = Mock()
+        result = discover_endpoints("https://single-quoted.example/")
+        self.assertEqual(result["authorization_endpoint"], "https://auth.example/auth")
+
+    @patch("microsub_client.auth.requests.get")
+    def test_first_html_link_wins(self, mock_get):
+        html = '''
+        <link rel="authorization_endpoint" href="https://first.example/auth">
+        <link rel="authorization_endpoint" href="https://second.example/auth">
+        '''
+        mock_get.return_value = Mock(status_code=200, text=html, headers={})
+        mock_get.return_value.raise_for_status = Mock()
+        result = discover_endpoints("https://first-wins.example/")
+        self.assertEqual(result["authorization_endpoint"], "https://first.example/auth")
+
+    @patch("microsub_client.auth.requests.get")
     def test_rejects_private_input_url(self, mock_get):
         with self.assertRaises(ValueError):
             discover_endpoints("http://127.0.0.1/")
