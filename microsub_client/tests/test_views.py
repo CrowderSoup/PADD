@@ -939,6 +939,15 @@ class FeedListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("feed.example", response.content.decode())
 
+    @patch("microsub_client.views.api.get_follows", return_value={"items": []})
+    def test_empty_channel_explains_how_to_follow(self, _mock):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/api/feeds/list/ch1/")
+        self.assertContains(response, "Paste a URL above")
+        self.assertContains(response, "Paste a site or feed URL")
+
     @patch("microsub_client.views.api.get_follows", side_effect=api.MicrosubError("fail"))
     def test_api_error_returns_502(self, _mock):
         session = self.client.session
@@ -1119,6 +1128,21 @@ class TimelineViewTests(TestCase):
         session.save()
         response = self.client.get("/channel/home/")
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Follow feeds")
+        self.assertContains(response, "lcars-empty-action")
+        self.assertNotContains(response, "Manage Feeds")
+
+    @patch("microsub_client.views.api.get_timeline", return_value={"items": [], "paging": {}})
+    @patch("microsub_client.views.api.get_channels", return_value=[
+        {"uid": "notifications", "name": "Notifications"},
+    ])
+    def test_notifications_empty_has_no_follow_button(self, _mock_ch, _mock_tl):
+        session = self.client.session
+        session.update(auth_session())
+        session.save()
+        response = self.client.get("/channel/notifications/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "lcars-empty-action")
 
     @patch("microsub_client.views.api.get_channels", side_effect=api.MicrosubError("fail"))
     def test_api_error_redirects_to_login(self, _mock):
