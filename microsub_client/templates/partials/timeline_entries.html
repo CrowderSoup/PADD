@@ -6,7 +6,17 @@
 {% for entry in entries %}
   {% include "partials/entry_card.html" %}
 {% empty %}
-  <div class="lcars-empty">No entries in this channel</div>
+  <div class="lcars-empty">
+    <p>No entries in this channel</p>
+    {% if channel_uid and not is_notifications_view and not unread_only and not active_category and not active_author %}
+    <button class="lcars-button lcars-button-blue lcars-empty-action"
+            hx-get="{% url 'feed-list' channel_uid=channel_uid %}"
+            hx-target="#feed-panel"
+            hx-swap="innerHTML"
+            onclick="var panel=document.getElementById('feed-panel'); if (panel) panel.classList.add('lcars-feed-panel-open')"
+            type="button">Follow feeds</button>
+    {% endif %}
+  </div>
 {% endfor %}
 
 {% if after_cursor %}

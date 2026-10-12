@@ -50,6 +50,10 @@ uv run manage.py runserver
 
 Visit `http://localhost:8000` and log in with your personal domain.
 
+## Following a feed
+
+Open a channel and choose **Follow feeds** from its menu, or use the same button on an empty timeline. Paste a site or feed URL, search, then Follow. The feed is added to that channel. Settings also imports an OPML file.
+
 ## Environment Variables
 
 | Variable                      | Required | Default                                    | Description                                                                                                              |

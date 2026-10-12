@@ -2106,6 +2106,14 @@ body.lcars-modal-open {
   text-transform: uppercase;
 }
 
+.lcars-empty p {
+  margin: 0;
+}
+
+.lcars-empty-action {
+  margin-top: 16px;
+}
+
 /* ========== Scrollbar ========== */
 
 ::-webkit-scrollbar {

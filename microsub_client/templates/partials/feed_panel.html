@@ -3,7 +3,7 @@
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 2 4 7 9 12"/></svg>
     Back
   </button>
-  <span class="lcars-feed-panel-title">Manage Feeds</span>
+  <span class="lcars-feed-panel-title">Follow feeds</span>
 </div>
 <div class="lcars-feed-search">
   <form hx-post="{% url 'feed-search' %}"
@@ -15,6 +15,7 @@
     <input type="text" name="query" class="lcars-input lcars-feed-search-input" placeholder="Search or enter feed URL" required>
     <button type="submit" class="lcars-button lcars-button-blue lcars-feed-search-btn">Search</button>
   </form>
+  <p class="lcars-settings-hint">Paste a site or feed URL, then Follow. It is added to this channel.</p>
   <div id="feed-search-loading" class="lcars-loading"><div class="lcars-scan-line"></div></div>
   <div id="feed-search-results"></div>
 </div>
