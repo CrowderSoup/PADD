@@ -34,7 +34,7 @@ ssh:
 
 env:
   clear:
-    DJANGO_ALLOWED_HOSTS: padd.crowdersoup.com,localhost,127.0.0.1,*
+    DJANGO_ALLOWED_HOSTS: padd.crowdersoup.com
     DJANGO_CSRF_TRUSTED_ORIGINS: https://padd.crowdersoup.com
     PADD_ADMIN_URLS: https://crowdersoup.com
     DJANGO_DEBUG: "False"
