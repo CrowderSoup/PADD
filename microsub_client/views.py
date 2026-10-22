@@ -1715,8 +1715,16 @@ def photo_proxy_view(request, draft_id, photo_hash):
     except (UnsafeOutboundURLError, requests.RequestException) as exc:
         return HttpResponse(f"Could not fetch photo: {exc}", status=502)
 
-    content_type = resp.headers.get("Content-Type", "application/octet-stream")
-    return HttpResponse(resp.content, content_type=content_type)
+    # The body is served from PADD's own origin, so only pass through image
+    # types: an upstream text/html (or SVG with script) here would run as
+    # PADD. SVG is refused for the same reason, and nosniff stops the browser
+    # second-guessing whatever type we do send.
+    content_type = resp.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if not content_type.startswith("image/") or content_type == "image/svg+xml":
+        return HttpResponse("Not an image", status=502)
+    response = HttpResponse(resp.content, content_type=content_type)
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 def photo_edit_view(request, draft_id, photo_hash):

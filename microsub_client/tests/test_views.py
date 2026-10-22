@@ -2664,6 +2664,37 @@ class PhotoProxyViewTests(TestCase):
         response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/raw/")
         self.assertIn(response.status_code, (302, 400, 403))
 
+    def _upstream(self, content_type, body=b"data"):
+        mock_resp = Mock()
+        mock_resp.headers = {"Content-Type": content_type}
+        mock_resp.content = body
+        return mock_resp
+
+    @patch("microsub_client.views.safe_request")
+    def test_image_response_strips_params_and_sets_nosniff(self, mock_safe_request):
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        mock_safe_request.return_value = self._upstream("Image/JPEG; charset=binary")
+        response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/raw/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+
+    @patch("microsub_client.views.safe_request")
+    def test_non_image_upstream_is_refused(self, mock_safe_request):
+        # The proxied body is served from PADD's own origin, so passing an
+        # upstream text/html or SVG through would run it as PADD.
+        self._auth_session()
+        draft = self._draft_with_photo()
+        photo_hash = photo_url_hash(draft.photos[0])
+        for content_type in ("text/html", "image/svg+xml", "application/javascript", ""):
+            with self.subTest(content_type=content_type):
+                mock_safe_request.return_value = self._upstream(content_type, b"<script>alert(1)</script>")
+                response = self.client.get(f"/drafts/{draft.pk}/photo/{photo_hash}/raw/")
+                self.assertEqual(response.status_code, 502)
+                self.assertNotIn(b"<script>", response.content)
+
 
 @override_settings(STORAGES=SIMPLE_STORAGES)
 class OpmlViewsTests(TestCase):
@@ -2891,3 +2922,16 @@ class NotificationsPreviewViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Recent Notifications")
         self.assertEqual(mock_tl.call_args.kwargs["is_read"], None)
+
+
+class HealthCheckMiddlewareTests(TestCase):
+    @override_settings(ALLOWED_HOSTS=["padd.example"])
+    def test_up_answers_for_container_hostname(self):
+        response = self.client.get("/up/", HTTP_HOST="padd-web-abc123:8000")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"OK")
+
+    @override_settings(ALLOWED_HOSTS=["padd.example"])
+    def test_other_paths_still_validate_host(self):
+        response = self.client.get("/login/", HTTP_HOST="evil.example")
+        self.assertEqual(response.status_code, 400)
